@@ -1,0 +1,73 @@
+# AI Toolbox
+The Building Information aGGregation, harmonisation and analytics (BIGG) platform is a EU-funded project to aims at 
+demonstrating the application of big data technologies and data analytics techniques for the complete buildings 
+life-cycle of more than 4000 buildings in 6 large-scale pilot test-beds. 
+This repository contains the python library AI Toolbox, which will provide all the AI tools necessary to build a 
+machine learning pipeline in the context of WP5 and related business cases and use cases.
+For the language-agnostic documentation, please refer to: 
+https://github.com/biggproject/biggdocs
+
+## Installation
+It is highly recommended to setup a virtual environment before using this package:
+
+```bash
+python3 -m venv ai_toolbox_venv/
+source ai_toolbox/bin/activate
+```
+
+Once the venv is activated, **assuming that this source code is inside the venv dir**, run inside the venv:
+
+#### Development
+
+```bash
+pip3 install -e .
+```
+
+This command should be executed by developers. It will install this package in "editable" mode using the script setup.py
+and all its dependencies. This implies that any changes to the original package would reflect directly in your 
+environment.
+
+#### Production 
+```bash
+pip3 install .
+```
+
+## Requirements
+Requires-Python: ">=3"
+
+
+### Examples
+Some examples of usage here:
+
+```python
+import ai_toolbox
+from ai_toolbox import data_preparation
+from ai_toolbox.data_preparation import detect_time_step
+```
+
+## Tests
+The directory "tests" contains a test file for each module of the AI toolbox. Unit tests make sure that
+each module behaves as intended and that future code changes will not break the current code.
+Once the package is installed, to run tests using the automatic discovery mechanism, "cd" to the directory
+of the "ai_toolbox".
+For example:
+```bash
+cd ~/projects/ai_toolbox
+```
+Then, from inside the directory, type:
+```bash
+python3 -m unittest -v
+```
+
+Note: To run successfully the application and tests the package **must be installed** otherwise it will
+throw import errors. Please follow the instructions in the "Installation" section.
+
+## Credits
+* Gerard Mor, gmor@cimne.upc.edu
+* Manu Lahariya, Manu.Lahariya@ugent.be
+* Riccardo De Vivo, Riccardo.DeVivo@energis.cloud
+* Théa Gutmacher, Thea.Gutmacher@inetum-realdolmen.world
+
+## Copyright
+
+BIGG copyright here, if any
