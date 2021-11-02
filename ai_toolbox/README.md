@@ -12,10 +12,11 @@ It is highly recommended to setup a virtual environment before using this packag
 
 ```bash
 python3 -m venv ai_toolbox_venv/
-source ai_toolbox/bin/activate
+source ai_toolbox_venv/bin/activate
 ```
 
-Once the venv is activated, **assuming that this source code is inside the venv dir**, run inside the venv:
+Once the venv is activated, **assuming that this source code is inside the venv dir** or cd to the package dir,
+run inside the venv:
 
 #### Development
 
