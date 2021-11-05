@@ -15,11 +15,13 @@ python3 -m venv ai_toolbox_venv/
 source ai_toolbox_venv/bin/activate
 ```
 
-Once the venv is activated, **assuming that this source code is inside the venv dir** or cd to the package dir,
+Once the venv is activated, **cd to the ai_toolbox package dir**. For example:
+```bash
+cd ~/projects/ai_toolbox
+```
 run inside the venv:
 
 #### Development
-
 ```bash
 pip3 install -e .
 ```
@@ -34,7 +36,7 @@ pip3 install .
 ```
 
 ## Requirements
-Requires-Python: ">=3"
+Requires-Python: ">=3.6"
 
 
 ### Examples
