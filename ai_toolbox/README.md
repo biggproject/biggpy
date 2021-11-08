@@ -49,6 +49,8 @@ from ai_toolbox.data_preparation import detect_time_step
 ```
 
 ## Tests
+
+### Testing in local (or virtual) environment
 The directory "tests" contains a test file for each module of the AI toolbox. Unit tests make sure that
 each module behaves as intended and that future code changes will not break the current code.
 Once the package is installed, to run tests using the automatic discovery mechanism, "cd" to the directory
@@ -62,8 +64,27 @@ Then, from inside the directory, type:
 python3 -m unittest -v
 ```
 
-Note: To run successfully the application and tests the package **must be installed** otherwise it will
-throw import errors. Please follow the instructions in the "Installation" section.
+Note: To run successfully the application and tests the package **must be installed** (normal or editable mode) 
+otherwise it will throw import errors. Please follow the instructions in the "Installation" section.
+
+### Testing in Multiple Environments
+The library uses tox to automate testing in multiple environments. 
+To install tox on your system run:
+```bash
+pip3 install tox
+```
+For further information check out: https://tox.wiki/en/latest/index.html .
+Tox will read the configuration file ```tox.ini```, 
+create a virtual environment for each environment specified in the section ```env```, item ```envlist```, and run the
+tests for each of them. In the end, tox will provide a final report with all the commands executed.
+To run tox, **cd to the ai_toolbox package dir**. For example:
+```bash
+cd ~/projects/ai_toolbox
+```
+Then, run:
+```bash
+tox
+```
 
 ## Credits
 * Gerard Mor, gmor@cimne.upc.edu
