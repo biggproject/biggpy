@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pandas as pd
 import numpy as np
 from ai_toolbox import data_preparation
+from pandas.testing import assert_frame_equal, assert_series_equal
 
 
 class DataPreparation(unittest.TestCase):
@@ -47,6 +48,14 @@ class DataPreparation(unittest.TestCase):
 
         cls.df_two_freq = pd.DataFrame(data=np.random.randint(0, 100, size=(len(idx))), index=idx, columns=["rand_int"])
 
+        # Generate regular time series (dataframe) with 2 columns
+        idx = pd.date_range(start='2021/10/01', end='2021/11/01', tz=pytz.utc, freq='10T')
+        cls.df_two_columns = pd.DataFrame(
+            data=np.random.randint(0, 100, size=(len(idx), 2)),
+            index=idx,
+            columns=["n1", "n2"]
+        )
+
     def test_detect_time_step_for_irregular_time_series(self):
         """ Test that detect_time_step works with an irregular time series """
 
@@ -76,7 +85,7 @@ class DataPreparation(unittest.TestCase):
     def test_detect_time_step_two_frequencies(self):
         """
         Test that detect_time_step returns the minimum frequency if there is
-         more than one occurrence of the most frequent time delta.
+         more than one occurrence of the most frequent time delta
         """
 
         self.assertEqual(data_preparation.detect_time_step(self.df_two_freq)[0], '15T')
@@ -85,6 +94,38 @@ class DataPreparation(unittest.TestCase):
         """ Test that detect_time_step raises ValueError in case of empty time series """
 
         self.assertRaises(ValueError, data_preparation.detect_time_step, pd.DataFrame(data=[]))
+
+    def test_detect_time_step_raises_if_more_columns(self):
+        """
+        Test that detect_time_step raises ValueError in case of DataFrame with
+        more than one column
+        """
+
+        self.assertRaises(ValueError, data_preparation.detect_time_step, self.df_two_columns)
+
+    def test_align_time_grid_raises_if_empty_series(self):
+        """ Test that align_time_grid raises ValueError in case of empty time series """
+
+        self.assertRaises(ValueError, data_preparation.align_time_grid, pd.DataFrame(data=[]), "30T", "mean")
+
+    def test_align_time_grid_raises_if_wrong_aggr_function(self):
+        """ Test that align_time_grid raises ValueError in case of empty time series """
+
+        self.assertRaises(ValueError, data_preparation.align_time_grid, self.df_irregular, "30T", "meh")
+
+    @staticmethod
+    def test_align_time_grid_ok():
+        """ Test that test_align_time_grid returns expected result for all the aggregations """
+
+        idx = pd.date_range(start='2021/10/01', periods=9, freq='min')
+        df = pd.DataFrame(data=range(len(idx)), index=idx, columns=['numbers'])
+        result_list = [[1, 4, 7], [1, 4, 7], [3, 12, 21], [0, 3, 6], [2, 5, 8]]
+        for i, aggr_function in enumerate(['mean', 'median', 'sum', 'min', 'max']):
+            df_aligned = data_preparation.align_time_grid(
+                data=df, output_frequency='3T', aggregation_function=aggr_function)
+            expected_result = pd.DataFrame(
+                data=result_list[i], index=pd.date_range(start='2021/10/01', periods=3, freq='3T'), columns=['numbers'])
+            assert_frame_equal(df_aligned, expected_result, check_exact=False, check_dtype=False)
 
     @classmethod
     def tearDownClass(cls):

@@ -33,16 +33,13 @@ def detect_time_step(data):
     frequencies = None
     best_frequency = None
 
-    # Clean-up the data by dropping NaN values (irregular time series)
-    # and sorting the index.
-    # Otherwise the function will be misled when guessing the frequency
-    # by the datetimeindex
-    data.dropna(inplace=True)
-    data.sort_index(inplace=True)
+    # Clean-up the data by dropping NaN values and sorting the index (irregular time series) .
+    # Otherwise the function will be misled when guessing the frequency by the DateTimeIndex
+    df_clean = data.dropna().sort_index()
 
     # Check if the series frequency is set and return it
     try:
-        best_frequency = data.index.freq.freqstr
+        best_frequency = df_clean.index.freq.freqstr
     except AttributeError:
         # If time series frequency attribute is not set, try to infer it
         # or guess the "best" frequency
@@ -51,14 +48,14 @@ def detect_time_step(data):
             # First case: "easiest" case, uniform time series
             # (The try block is because infer_freq raises ValueError if there
             # are fewer than 3 datapoints in the series)
-            best_frequency = pd.infer_freq(data.index, warn=True)
+            best_frequency = pd.infer_freq(df_clean.index, warn=True)
         except ValueError:
             pass
         # Second case: "worst" case, non-uniform time series
         # the "best" frequency is the most frequent time delta between
         # two consecutive samples
         if best_frequency is None:
-            frequencies = pd.DataFrame(data=data.index.to_series().diff().value_counts())
+            frequencies = pd.DataFrame(data=df_clean.index.to_series().diff().value_counts())
             frequencies.rename(columns={frequencies.columns[0]: "freq_count"}, inplace=True)
             frequencies["freqstr"] = frequencies.apply(lambda x: to_offset(x.name).freqstr, axis=1)
             best_frequency = frequencies[
@@ -66,6 +63,34 @@ def detect_time_step(data):
 
     finally:
         return best_frequency, frequencies
+
+
+def align_time_grid(data, output_frequency, aggregation_function, closed=None):
+    """
+    The function aligns the frequency of the input time series with the output
+    frequency given as an argument using the specified aggregation function.
+    If the measurementReadingType of the series is not instantaneous, the data
+    must be converted first using the function clean_ts_integrate.
+    This is a wrapper around the function 'resample' of pandas.
+
+    :param data:  The time series that has to be aligned with an output time step, i.e. with a specific frequency.
+    :param output_frequency: The frequency used to resample the input time series for the alignment.
+            It must be a string in ISO 8601 format representing the time step (e.g. "15T","1H", "M", "D",...).
+    :param aggregation_function: The aggregation function to use when resampling the series. Possible values are
+            mean, sum, min, max, median.
+    :param closed: {‘right’, ‘left’}, default None. Which side of bin interval is closed. The default is ‘left’
+            for all frequency offsets except for ‘M’, ‘A’, ‘Q’, ‘BM’, ‘BA’, ‘BQ’, and ‘W’ which all have
+            a default of ‘right’.
+    :return: The time series resampled with the specified period and aggregation function.
+    """
+
+    if data.empty:
+        raise ValueError("Input series must be not empty.")
+    elif aggregation_function not in ['mean', 'median', 'max', 'min', 'sum']:
+        raise ValueError("Aggregation function must be in ['mean', 'median', 'max', 'min', 'sum'].")
+
+    resampler = data.resample(rule=output_frequency, closed=closed)
+    return getattr(resampler, aggregation_function)()
 
 
 if __name__ == '__main__':

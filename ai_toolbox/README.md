@@ -40,7 +40,7 @@ Requires-Python: ">=3.6"
 
 
 ### Examples
-Some examples of usage here:
+Some examples on how to import the library after it is installed:
 
 ```python
 import ai_toolbox
