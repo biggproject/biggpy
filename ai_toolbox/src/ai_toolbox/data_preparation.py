@@ -69,7 +69,7 @@ def align_time_grid(data, output_frequency, aggregation_function, closed=None):
     """
     The function aligns the frequency of the input time series with the output
     frequency given as an argument using the specified aggregation function.
-    If the measurementReadingType of the series is not instantaneous, the data
+    If the measurement_reading_type of the series is not instantaneous, the data
     must be converted first using the function clean_ts_integrate.
     This is a wrapper around the function 'resample' of pandas.
 
@@ -92,6 +92,49 @@ def align_time_grid(data, output_frequency, aggregation_function, closed=None):
     resampler = data.resample(rule=output_frequency, closed=closed)
     return getattr(resampler, aggregation_function)()
 
+def clean_ts_integrate(data, measurement_reading_type):
+    """
+    The function converts a cumulative (counter) or onChange (delta) measurement to instantaneous.
+    If 'cumulative' the function will interpret each observation as a counter value.
+    It will replace each value with its difference from the previous value if the result is not negative,
+    otherwise will keep the same value (counter rollover).
+    If 'delta' the function will interpret each observation as the difference between the current value
+    and the previous value and return the cumulative sum of the values.
+
+    :param data: The cumulative or on-change time series that has to be converted to instantaneous.
+            An instantaneous measurement is a gauge metric, in which the value can increase or decrease
+            and measures a specific instant in time.
+    :param measurement_reading_type: Defines the type of the measurement of the input data.
+            Possible values:
+                - 'on_change' or 'delta': representing a delta metric, in which the value measures the change since it
+                    was last recorded.
+                - 'cumulative' or 'counter': representing a cumulative metric, in which the value can only increase over
+                    time or be reset to zero on restart.
+    :return: The cumulative or onChange time series with the measurements converted to the instantaneous type.
+
+    """
+
+    if data.empty or (isinstance(data, pd.DataFrame) and data.shape[1] > 1):
+        raise ValueError("Input series must be not empty and have exactly one column (if DataFrame),"
+                         " i.e. shape = (n, 1).")
+
+
+    if measurement_reading_type in ["cumulative", "counter"]:
+        # Sort the time series and compute the difference with the previous values
+        df_clean = data.sort_index().diff().fillna(data)
+
+        # Keep the same value from data if the difference is negative (counter rollover)
+        df_clean.where(df_clean.gt(0), data, inplace=True)
+
+    elif measurement_reading_type in ["delta", "on_change"]:
+        # Compute the cumulative sum for delta metrics
+        df_clean = data.sort_index().cumsum()
+
+    else:
+        raise ValueError("Measurement reading type must be in ['on_change', 'delta', 'cumulative', 'counter'].")
+
+
+    return df_clean
 
 if __name__ == '__main__':
     """
