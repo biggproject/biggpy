@@ -18,7 +18,7 @@ class DataPreparation(unittest.TestCase):
 
         from os.path import dirname, join, realpath
         import pytz
-        
+
         super().setUpClass()
 
         # Load irregular time series (dataframe) from csv
@@ -40,7 +40,7 @@ class DataPreparation(unittest.TestCase):
 
         # Generate short series of randint
         idx = pd.to_datetime(["2021-11-05 11:48:00", "2021-11-05 11:33:00"])
-        cls. df_short = pd.DataFrame(data=np.random.randint(0, 100, size=(len(idx))), index=idx, columns=["rand_int"])
+        cls.df_short = pd.DataFrame(data=np.random.randint(0, 100, size=(len(idx))), index=idx, columns=["rand_int"])
 
         # Generate short series of randint with two equal frequencies
         idx = pd.to_datetime(["2021-11-05 11:01:00", "2021-11-05 11:33:00", "2021-11-05 11:48:00",
@@ -55,6 +55,12 @@ class DataPreparation(unittest.TestCase):
             index=idx,
             columns=["n1", "n2"]
         )
+
+        counter = [30, 1, 20, 28, 44, 0, 2, 11, 56, 0, 23, 89, 10, 32, 45, 19]
+        cls.df_counter = pd.Series(data=counter, index=pd.date_range('12/11/2021', freq='15T', periods=len(counter)))
+
+        delta = [30.0, -29.0, 19.0, 8.0, 16.0, -44.0, 2.0, 9.0, 45.0, -56.0, 23.0, 66.0, -79.0, 22.0, 13.0, -26.0]
+        cls.df_delta = pd.Series(data=delta, index=pd.date_range('12/11/2021', freq='15T', periods=len(delta)))
 
     def test_detect_time_step_for_irregular_time_series(self):
         """ Test that detect_time_step works with an irregular time series """
@@ -126,6 +132,44 @@ class DataPreparation(unittest.TestCase):
             expected_result = pd.DataFrame(
                 data=result_list[i], index=pd.date_range(start='2021/10/01', periods=3, freq='3T'), columns=['numbers'])
             assert_frame_equal(df_aligned, expected_result, check_exact=False, check_dtype=False)
+
+    def test_clean_ts_integrate_raises_if_wrong_type(self):
+        """ Test that clean_ts_integrate raises returns if incorrect measurement type """
+
+        self.assertRaises(ValueError, data_preparation.clean_ts_integrate, self.series_regular, "del")
+
+    def test_clean_ts_integrate_raises_if_empty_series(self):
+        """ Test that clean_ts_integrate raises ValueError in case of empty time series """
+
+        self.assertRaises(ValueError, data_preparation.clean_ts_integrate, pd.DataFrame(data=[]), "delta")
+
+    def test_clean_ts_integrate_raises_if_more_columns(self):
+        """
+        Test that clean_ts_integrate raises ValueError in case of DataFrame with
+        more than one column
+        """
+
+        self.assertRaises(ValueError, data_preparation.clean_ts_integrate, self.df_two_columns, "delta")
+
+    def test_clean_ts_integrate_ok_cumulative(self):
+        """ Test that clean_ts_integrate returns expected result for cumulative metrics """
+
+        series_converted = data_preparation.clean_ts_integrate(self.df_counter, "counter")
+        expected_result = [30.0, 1.0, 19.0, 8.0, 16.0, 0.0, 2.0, 9.0, 45.0, 0.0, 23.0, 66.0, 10.0, 22.0, 13.0, 19.0]
+        expected_result = pd.Series(
+            data=expected_result,
+            index=pd.date_range('12/11/2021', freq='15T', periods=len(expected_result)))
+        assert_series_equal(series_converted, expected_result, check_exact=False, check_dtype=False)
+
+    def test_clean_ts_integrate_ok_delta(self):
+        """ Test that clean_ts_integrate returns expected result for delta metrics """
+
+        series_converted = data_preparation.clean_ts_integrate(self.df_delta, "delta")
+        expected_result = [30.0, 1.0, 20.0, 28.0, 44.0, 0.0, 2.0, 11.0, 56.0, 0.0, 23.0, 89.0, 10.0, 32.0, 45.0, 19.0]
+        expected_result = pd.Series(
+            data=expected_result,
+            index=pd.date_range('12/11/2021', freq='15T', periods=len(expected_result)))
+        assert_series_equal(series_converted, expected_result, check_exact=False, check_dtype=False)
 
     @classmethod
     def tearDownClass(cls):
