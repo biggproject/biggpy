@@ -165,11 +165,7 @@ class DataPreparation(unittest.TestCase):
         """ Test that clean_ts_integrate returns expected result for delta metrics """
 
         series_converted = data_preparation.clean_ts_integrate(self.df_delta, "delta")
-        expected_result = [30.0, 1.0, 20.0, 28.0, 44.0, 0.0, 2.0, 11.0, 56.0, 0.0, 23.0, 89.0, 10.0, 32.0, 45.0, 19.0]
-        expected_result = pd.Series(
-            data=expected_result,
-            index=pd.date_range('12/11/2021', freq='15T', periods=len(expected_result)))
-        assert_series_equal(series_converted, expected_result, check_exact=False, check_dtype=False)
+        assert_series_equal(series_converted, self.df_counter, check_exact=False, check_dtype=False)
 
     @classmethod
     def tearDownClass(cls):
