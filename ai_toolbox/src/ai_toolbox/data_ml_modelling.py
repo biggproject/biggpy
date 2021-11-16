@@ -5,6 +5,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import statsmodels.tsa.api as smt
 import statsmodels.api as sm
+#!pip install pmdarima
+import pmdarima as pm
 
 
 def test_stationarity_acf_pacf (data, sample, maxLag):
@@ -142,6 +144,74 @@ def evaluate_forecast(dtf, title, plot=True, figsize=(20,13)):
         print("--- got error ---")
         print(e)
         
+
+def param_tuning_sarimax (data, m, information_criterion='aic', max_oder):
+  """
+  Automatically discover the optimal order for a SARIMAX model. 
+  The function works by conducting differencing tests to determine the order of differencing, d, 
+  and then fitting models within ranges of defined start_p, max_p, start_q, max_q ranges.
+  If the seasonal optional is enabled(allowing SARIMAX over ARIMA), it also seeks to identify 
+  the optimal P and Q hyper- parameters after conducting the Canova-Hansen to determine the optimal order of seasonal differencing, D.
+
+  In order to find the best model, it optimizes for a given information_criterion, one of (‘aic’, ‘aicc’, ‘bic’, ‘hqic’, ‘oob’) 
+  and returns the ARIMA which minimizes the value.
+  """
+  if data.empty:
+        raise ValueError("Input series must be not empty.")
+      
+  best_model = pm.auto_arima(data, exogenous=None,                                    
+                                  seasonal=True, stationary=True, 
+                                  m=m, information_criterion='aic', 
+                                  max_order=max_order,                               
+                                  max_p=2, max_d=1, max_q=2,                                     
+                                  max_P=1, max_D=1, max_Q=2,                                   
+                                  error_action='ignore')
+  return best_model
+
+
+def fit_sarimax(ts_train, order, seasonal_order, exog_train=None):
+    '''
+    Fit SARIMAX (Seasonal ARIMA with External Regressors):  
+    y[t+1] = (c + a0*y[t] + a1*y[t-1] +...+ ap*y[t-p]) + (e[t] + 
+                b1*e[t-1] + b2*e[t-2] +...+ bq*e[t-q]) + (B*X[t])
+    :param ts_train: pandas timeseries
+    :param order: tuple - ARIMA(p,d,q) --> p: lag order (AR), d: 
+    degree of differencing (to remove trend), q: order 
+                    of moving average (MA)
+    :param seasonal_order: tuple - (P,D,Q,s) --> s: number of 
+                    observations per seasonal (ex. 7 for weekly 
+                    seasonality with daily data, 12 for yearly 
+                    seasonality with monthly data)
+    :param exog_train: pandas dataframe or numpy array
+    :return Model and dtf with the fitted values
+    '''
+    ## train
+    if data.empty:
+        raise ValueError("Input series must be not empty.")
+        
+    model = smt.SARIMAX(data, order=order, 
+                          seasonal_order=seasonal_order, 
+                          exog=exog_train, enforce_stationarity=False, 
+                          enforce_invertibility=False)
+    model=model.fit()  
+    dtf_train = data.to_frame(name="ts")
+    dtf_train["model"] = model.fittedvalues
+         
+    return dtf_train
+  
+def test_sarimax (ts_train, ts_test, exog_test=None, p):
+  """
+  """
+  dtf_test = ts_test[:p].to_frame(name="ts")
+
+  if exog_test is None:
+    dtf_test["forecast"] = model.predict(start=len(ts_train)+1, 
+                            end=len(ts_train)+len(ts_test[:(p)-1]), 
+                            exog=exog_test)
+  else:
+    dtf_test["forecast"] = model.predict(start=len(ts_train)+1, 
+                            end=len(ts_train)+len(ts_test[:(p)-1]), 
+                            exog=exog_test[:p])
   
 if __name__ == '__main__':
     """
