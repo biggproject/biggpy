@@ -76,7 +76,72 @@ def test_stationarity_acf_pacf (data, sample, maxLag):
   plt.tight_layout()
   
   
+def evaluate_forecast(dtf, title, plot=True, figsize=(20,13)):
+  '''
+  Evaluation metrics for predictions.
   
+  :param dtf: DataFrame with columns raw values, fitted training  
+                 values, predicted test values
+  :return: DataFrame with raw ts and forecast
+  '''
+  if dtf.empty:
+        raise ValueError("Input series must be not empty.")
+        
+  try:
+        ## residuals
+        dtf["residuals"] = dtf["ts"] - dtf["model"]
+        dtf["error"] = dtf["ts"] - dtf["forecast"]
+        dtf["error_pct"] = dtf["error"] / dtf["ts"]
+        
+        ## kpi
+        residuals_mean = dtf["residuals"].mean()
+        residuals_std = dtf["residuals"].std()
+        error_mean = dtf["error"].mean()
+        error_std = dtf["error"].std()
+        mae = dtf["error"].apply(lambda x: np.abs(x)).mean()
+        mse = dtf["error"].apply(lambda x: x**2).mean()
+        rmse = np.sqrt(mse)  #root mean squared error
+        
+        ## intervals
+        dtf["conf_int_low"] = dtf["forecast"] - 1.96*residuals_std
+        dtf["conf_int_up"] = dtf["forecast"] + 1.96*residuals_std
+        dtf["pred_int_low"] = dtf["forecast"] - 1.96*error_std
+        dtf["pred_int_up"] = dtf["forecast"] + 1.96*error_std
+        
+        ## plot
+        if plot==True:
+            fig = plt.figure(figsize=figsize)
+            fig.suptitle(title, fontsize=20)   
+            ax1 = fig.add_subplot(2,2, 1)
+            ax2 = fig.add_subplot(2,2, 2, sharey=ax1)
+            ax3 = fig.add_subplot(2,2, 3)
+            ax4 = fig.add_subplot(2,2, 4)
+            ### training
+            dtf[pd.notnull(dtf["model"])][["ts","model"]].plot(color=["black","green"], title="Model", grid=True, ax=ax1)      
+            ax1.set(xlabel=None)
+            ### test
+            dtf[pd.isnull(dtf["model"])][["ts","forecast"]].plot(color=["black","red"], title="Forecast", grid=True, ax=ax2)
+            ax2.fill_between(x=dtf.index, y1=dtf['pred_int_low'], y2=dtf['pred_int_up'], color='b', alpha=0.2)
+            ax2.fill_between(x=dtf.index, y1=dtf['conf_int_low'], y2=dtf['conf_int_up'], color='b', alpha=0.3)     
+            ax2.set(xlabel=None)
+            ### residuals
+            dtf[["residuals","error"]].plot(ax=ax3, color=["green","red"], title="Residuals", grid=True)
+            ax3.set(xlabel=None)
+            ### residuals distribution
+            dtf[["residuals","error"]].plot(ax=ax4, color=["green","red"], kind='kde', title="Residuals Distribution", grid=True)
+            ax4.set(ylabel=None)
+            plt.show()
+            print("Training --> Residuals mean:", np.round(residuals_mean), " | std:", np.round(residuals_std))
+            print("Test --> Error mean:", np.round(error_mean), " | std:", np.round(error_std),
+                  " | mae:",np.round(mae), " | mape:",np.round(mape*100), "%  | mse:",np.round(mse), " | rmse:",np.round(rmse))
+        
+        return dtf[["ts","model","residuals","conf_int_low","conf_int_up", 
+                    "forecast","error","pred_int_low","pred_int_up"]]
+    
+  except Exception as e:
+        print("--- got error ---")
+        print(e)
+        
   
 if __name__ == '__main__':
     """
