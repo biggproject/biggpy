@@ -23,6 +23,8 @@ class PhyCell(torch.nn.Module):
         super(PhyCell, self).__init__()
         f = open(paras_json_loc, "r")
         parameter_dict = json.loads(f.read())
+        self.phyparam = torch.nn.ParameterDict({})
+        self.set_param(dict=parameter_dict)
 
     def forward(self, Inputs, State):
         '''
@@ -37,25 +39,37 @@ class PhyCell(torch.nn.Module):
         '''
         :return: the weight loss
         '''
-        raise  NotImplementedError
+        l = torch.tensor(0.0)
+        loss = torch.stack([torch.add(l, torch.relu(-self.phyparam[p])) for p in self.phyparam], dim=0).sum(dim=0)
+        return loss
 
     def get_param(self):
         '''
         :return: the current parameter dictionary
         '''
-
-        raise NotImplementedError
+        para_dict = {key: float(self.phyparam[key].data.numpy()) for key in self.PhyCell.phyparam}
+        return para_dict
 
     def set_param(self,pri = True, **kwargs):
         '''
         **kwargs: key value pairs for parameters and their values
         '''
-
-        raise NotImplementedError
+        for key, value in kwargs.items():
+            if pri: print("Parameters setting: %s == %s" % (key, value))
+            if isinstance(value, dict):
+                for (k, v) in value.items():
+                    self.phyparam.update({k: torch.nn.Parameter(torch.tensor([v], requires_grad=True))})
+            else:
+                self.phyparam.update({key: torch.nn.Parameter(torch.tensor([value], requires_grad=True))})
 
     def set_param_grad(self,pri = True, **kwargs):
         '''
         **kwargs: key value pairs for parameters and a bool
         '''
-
-        raise NotImplementedError
+        for key, value in kwargs.items():
+            if pri: print("Parameters gradient setting: %s == %s" % (key, value))
+            if isinstance(value, dict):
+                for (k, v) in value.items():
+                    self.phyparam[k].requires_grad = v
+            else:
+                self.phyparam[key].requires_grad = value
