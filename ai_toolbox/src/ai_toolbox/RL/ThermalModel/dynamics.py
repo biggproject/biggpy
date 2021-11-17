@@ -56,11 +56,11 @@ def RoomT_next(RoomT, BuildingT, BoilerInletT,BoilerOutletT_next, AmbientT , dt,
     :param Ri: Resistance between room and boiler inlet temperature
     :return: Room temperature at timeslot T + dt
     '''
-    Boiler_heating = (dt*Cr*Ro)*BoilerOutletT_next
-    Tr_contribution =  (1 - ((dt*Cr)*( 1/Ra + 1/Rm + Ro + 1/Ri )))*RoomT
-    Tm_contribution = (dt*Cr/(Rm))*BuildingT
-    Ti_contribution = (dt*Cr / (Ri)) * BoilerInletT
-    Ta_contribution = (dt*Cr / (Ra)) * AmbientT
+    Boiler_heating = (dt/(Cr*Ro))*BoilerOutletT_next
+    Tr_contribution =  (1 - ((dt*Cr)*( 1/Ra + 1/Rm + 1/Ro + 1/Ri )))*RoomT
+    Tm_contribution = (dt/(Rm*Cr))*BuildingT
+    Ti_contribution = (dt / (Ri*Cr)) * BoilerInletT
+    Ta_contribution = (dt/ (Ra*Cr )) * AmbientT
     if Irradiance is not None: Ta_contribution = Ta_contribution + Irradiance
     roomt_next =  Tr_contribution + Tm_contribution  + Ta_contribution + Boiler_heating + Ti_contribution
     return roomt_next
