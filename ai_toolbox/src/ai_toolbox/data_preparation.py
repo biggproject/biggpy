@@ -118,7 +118,6 @@ def clean_ts_integrate(data, measurement_reading_type):
         raise ValueError("Input series must be not empty and have exactly one column (if DataFrame),"
                          " i.e. shape = (n, 1).")
 
-
     if measurement_reading_type in ["cumulative", "counter"]:
         # Sort the time series and compute the difference with the previous values
         df_clean = data.sort_index().diff().fillna(data)
@@ -132,7 +131,6 @@ def clean_ts_integrate(data, measurement_reading_type):
 
     else:
         raise ValueError("Measurement reading type must be in ['on_change', 'delta', 'cumulative', 'counter'].")
-
 
     return df_clean
 
