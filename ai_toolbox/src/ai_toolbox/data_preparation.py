@@ -92,6 +92,7 @@ def align_time_grid(data, output_frequency, aggregation_function, closed=None):
     resampler = data.resample(rule=output_frequency, closed=closed)
     return getattr(resampler, aggregation_function)()
 
+
 def clean_ts_integrate(data, measurement_reading_type):
     """
     The function converts a cumulative (counter) or onChange (delta) measurement to instantaneous.
@@ -139,4 +140,15 @@ if __name__ == '__main__':
     This module is not supposed to run as a stand-alone module.
     This part below is only for testing purposes. 
     """
+    from os.path import join
 
+    dataset_dir = "/home/rick/Coding/Notebooks/datasets"
+    filename = join(dataset_dir, "tem_yearly_temp.csv")
+    df = pd.read_csv(
+        filename,
+        sep=',',
+        parse_dates=True,
+        infer_datetime_format=True,
+        index_col=0)
+    df.index.name = "timestamp"
+    print(detect_time_step(df))
