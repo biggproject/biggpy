@@ -9,6 +9,50 @@ import statsmodels.api as sm
 import pmdarima as pm
 
 
+def split_train_test(data, test, plot):
+  '''
+  Split train/test from any given data point.
+  :parameter
+    :param ts: pandas Series
+    :param test: num or str - test size    or index position
+                 (ex. "yyyy-mm-dd", 1000)
+  :return
+    ts_train, ts_test
+  '''
+   if data.empty:
+        raise ValueError("Input series must be not empty.")
+   
+   ## define splitting point
+   if type(test) is float:
+        split = int(len(ts)*(1-test))
+        perc = test
+   elif type(test) is str:
+        split = ts.reset_index()[ 
+                      ts.reset_index().iloc[:,0]==test].index[0]
+        perc = round(len(ts[split:])/len(ts), 2)
+   else:
+        split = test
+        perc = round(len(ts[split:])/len(ts), 2)
+   print("--- splitting at index: ", split, "|", 
+          ts.index[split], "| test size:", perc, " ---")
+    
+   ## split ts
+   ts_train = ts.head(split)
+   ts_test = ts.tail(len(ts)-split)
+   if plot is True:
+        fig, ax = plt.subplots(nrows=1, ncols=2, sharex=False, 
+                               sharey=True, figsize=(15,5))
+        ts_train.plot(ax=ax[0], grid=True, title="Train", 
+                      color="black")
+        ts_test.plot(ax=ax[1], grid=True, title="Test", 
+                     color="blue")
+        ax[0].set(xlabel=None)
+        ax[1].set(xlabel=None)
+        plt.show()
+        
+   return ts_train, ts_test
+
+
 def test_stationarity_acf_pacf (data, sample, maxLag):
   """
   This function tests the stationarity and plot the autocorrelation and partial autocorrelation of the time series.
