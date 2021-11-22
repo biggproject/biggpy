@@ -7,6 +7,10 @@ import statsmodels.tsa.api as smt
 import statsmodels.api as sm
 #!pip install pmdarima
 import pmdarima as pm
+from fbprophet import Prophet
+from sklearn.model_selection import ParameterGrid
+import random
+import holidays
 
 
 def test_stationarity_acf_pacf (data, sample, maxLag):
@@ -32,10 +36,14 @@ def test_stationarity_acf_pacf (data, sample, maxLag):
 
    These correlations are used to define the parameters of the forecasting methods (lag).
    
-   :param data: timeSeries for which the stationarity as to be evaluated.
-   :param sample: Sample (float) of the data that will be evaluated.
-   :param maxLag: Maximum number of lag which included in test. The default value is 12*(nobs/100)^{1/4}.
-   :return: plot of the mean and variance of the sample with the p-value and plot of the autocorrelation and partial autocorrelation.
+   :parameter
+     :param data: timeSeries for which the stationarity as to be evaluated.
+     :param sample: Sample (float) of the data that will be evaluated.
+     :param maxLag: Maximum number of lag which included in test. 
+                    The default value is 12*(nobs/100)^{1/4}.
+   :return: 
+      plot of the mean and variance of the sample with the p-value 
+      and plot of the autocorrelation and partial autocorrelation.
   """
   if data.empty:
         raise ValueError("Input series must be not empty.")
@@ -82,9 +90,11 @@ def evaluate_forecast(dtf, title, plot=True, figsize=(20,13)):
   '''
   Evaluation metrics for predictions.
   
-  :param dtf: DataFrame with columns raw values, fitted training  
-                 values, predicted test values
-  :return: DataFrame with raw ts and forecast
+  :parameter
+    :param dtf: DataFrame with columns raw values, fitted training  
+                 values, predicted test values.
+  :return: 
+    DataFrame with raw ts and forecast.
   '''
   if dtf.empty:
         raise ValueError("Input series must be not empty.")
@@ -145,19 +155,37 @@ def evaluate_forecast(dtf, title, plot=True, figsize=(20,13)):
         print(e)
         
 
-def param_tuning_sarimax (data, m, information_criterion='aic', max_oder):
+def param_tuning_sarimax (data, m, max_order, information_criterion='aic'):
   """
   Automatically discover the optimal order for a SARIMAX model. 
   The function works by conducting differencing tests to determine the order of differencing, d, 
   and then fitting models within ranges of defined start_p, max_p, start_q, max_q ranges.
+  
   If the seasonal optional is enabled(allowing SARIMAX over ARIMA), it also seeks to identify 
-  the optimal P and Q hyper- parameters after conducting the Canova-Hansen to determine the optimal order of seasonal differencing, D.
+  the optimal P and Q hyper- parameters after conducting the Canova-Hansen 
+  to determine the optimal order of seasonal differencing, D.
 
-  In order to find the best model, it optimizes for a given information_criterion, one of (‘aic’, ‘aicc’, ‘bic’, ‘hqic’, ‘oob’) 
-  and returns the ARIMA which minimizes the value.
+  In order to find the best model, it optimizes for a given information_criterion and returns the ARIMA which minimizes the value.
+  
+  :parameter
+    :param data: timeSeries used to fit the sarimax estimator.
+    :param m: refers to the number of periods in each season. 
+                    For example, m is 4 for quarterly data, 
+                    12 for monthly data, or 1 for annual data. 
+    :param max_order: maximum value of p+q+P+Q. 
+                    If p+q >= max_order, a model will not be fit with those parameters 
+                    and will progress to the next combination. 
+                    Default is 5.
+    :param information_criterion: used to select the best model. 
+                  Possibilities are ‘aic’, ‘bic’, ‘hqic’, ‘oob’. Default is 'aic'.
+                 
+  :return
+    best_model: model with the optimal parameters
   """
   if data.empty:
         raise ValueError("Input series must be not empty.")
+  elif not isinstance (m, (int)):
+        raise ValueError("m must be an integer.")
       
   best_model = pm.auto_arima(data, exogenous=None,                                    
                                   seasonal=True, stationary=True, 
@@ -174,45 +202,274 @@ def fit_sarimax(ts_train, order, seasonal_order, exog_train=None):
     Fit SARIMAX (Seasonal ARIMA with External Regressors):  
     y[t+1] = (c + a0*y[t] + a1*y[t-1] +...+ ap*y[t-p]) + (e[t] + 
                 b1*e[t-1] + b2*e[t-2] +...+ bq*e[t-q]) + (B*X[t])
-    :param ts_train: pandas timeseries
-    :param order: tuple - ARIMA(p,d,q) --> p: lag order (AR), d: 
-    degree of differencing (to remove trend), q: order 
-                    of moving average (MA)
-    :param seasonal_order: tuple - (P,D,Q,s) --> s: number of 
-                    observations per seasonal (ex. 7 for weekly 
-                    seasonality with daily data, 12 for yearly 
-                    seasonality with monthly data)
-    :param exog_train: pandas dataframe or numpy array
-    :return Model and dtf with the fitted values
+    :parameter
+      :param ts_train: pandas timeseries
+      :param order: tuple - ARIMA(p,d,q) --> p: lag order (AR), d: 
+      degree of differencing (to remove trend), q: order 
+                      of moving average (MA).
+      :param seasonal_order: tuple - (P,D,Q,s) --> s: number of 
+                      observations per seasonal (ex. 7 for weekly 
+                      seasonality with daily data, 12 for yearly 
+                      seasonality with monthly data).
+      :param exog_train: pandas dataframe or numpy array.
+      
+    :return 
+      Model and dtf with the fitted values
     '''
     ## train
-    if data.empty:
-        raise ValueError("Input series must be not empty.")
-        
-    model = smt.SARIMAX(data, order=order, 
+    if ts_train.empty:
+        raise ValueError("Train series must be not empty.")
+    
+    
+    model = smt.SARIMAX(ts_train, order=order, 
                           seasonal_order=seasonal_order, 
                           exog=exog_train, enforce_stationarity=False, 
                           enforce_invertibility=False)
     model=model.fit()  
-    dtf_train = data.to_frame(name="ts")
+    dtf_train = ts_train.to_frame(name="ts")
     dtf_train["model"] = model.fittedvalues
          
-    return dtf_train
+    return dtf_train, model
   
-def test_sarimax (ts_train, ts_test, exog_test=None, p):
+def test_sarimax (ts_train, ts_test, exog_test, p, model):
   """
+  The function uses the model from the fit_sarimax function 
+  to make predictions for the future value.
+  
+  :parameter
+    :param ts_train: timeSeries used to train the model.
+    :param ts_test: timeSeries used to test the model.
+    :param exog_test: timeSeries containing the exogeneous variables. 
+    :param p: number of periods to be forcasted.
+    :param model: model from the fit_sarimax function.
+  
+  :return
+    Dataframe containing the true values and the forecasted ones.  
   """
+  
+  if ts_train.empty:
+        raise ValueError("Train series must be not empty.")
+  elif ts_test.empty:
+        raise ValueError("Test series must be not empty.")
+  elif not isinstance (p, (int)):
+        raise ValueError("p must be an integer.")
+    
   dtf_test = ts_test[:p].to_frame(name="ts")
 
   if exog_test is None:
-    dtf_test["forecast"] = model.predict(start=len(ts_train)+1, 
+        dtf_test["forecast"] = model.predict(start=len(ts_train)+1, 
                             end=len(ts_train)+len(ts_test[:(p)-1]), 
                             exog=exog_test)
   else:
-    dtf_test["forecast"] = model.predict(start=len(ts_train)+1, 
+        dtf_test["forecast"] = model.predict(start=len(ts_train)+1, 
                             end=len(ts_train)+len(ts_test[:(p)-1]), 
                             exog=exog_test[:p])
+  dtf_test = dtf.round()
+  return dtf_test
+
+def mean_absolute_percentage_error(y_true, y_pred): 
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
   
+def input_prophet (ts_train, ts_test):
+  """
+  
+  The input to Prophet is always a dataframe with two columns: ds and y. 
+  The ds (datestamp) column should be of a format expected by Pandas, 
+  ideally YYYY-MM-DD for a date or YYYY-MM-DD HH:MM:SS for a timestamp. 
+  The function rename and adapt the format of ds.
+  
+  :parameter
+    :param ts_train: timeSeries used to train the model.
+    :param ts_test: timeSeries used to test the model.
+   
+   :return
+      dtf_train: pandas Dataframe with the train set 
+               with columns 'ds' (dates), 
+               values, 'cap' (capacity if growth="logistic"), 
+               other additional regressor.
+      dtf_test: pandas Dataframe with the test set
+               with columns 'ds' (dates), 
+               values, 'cap' (capacity if growth="logistic"), 
+               other additional regressor.
+  """
+  
+  if ts_train.empty:
+        raise ValueError("Train series must be not empty.")
+  elif ts_test.empty:
+        raise ValueError("Test series must be not empty.")
+  
+  dtf_train = ts_train.reset_index()
+  dtf_train.rename(index=str,columns={'time':'ds'},inplace=True)
+
+  dtf_train= pd.merge(dtf_train, temp, how='left', on='ds')
+  dtf_train = dtf_train.fillna(0)
+
+  dtf_test = ts_test.reset_index()
+  dtf_test.rename(index=str,columns={'time':'ds'},inplace=True)
+
+  dtf_test= pd.merge(dtf_test, temp, how='left', on='ds')
+   dtf_test = dtf_test.fillna(0)
+
+  dtf_train['ds'] = dtf_train['ds'].dt.tz_localize(None)
+  dtf_test['ds'] = dtf_test['ds'].dt.tz_localize(None)
+  
+  return dtf_train, dtf_test
+
+
+def param_tuning_prophet (dtf_train, p, seasonality_mode, 
+                         changepoint_prior_scale, holidays_prior_scale, n_changepoints):
+  """
+  This function performs a search on all the parameters of the parameter grid defined and identifies 
+  the best parameter set for a prophet model, given a MAPE scoring.
+  
+  :parameter
+    :param dtf_train: pandas Dataframe with columns 'ds' (dates), 
+               values, 'cap' (capacity if growth="logistic"), 
+               other additional regressor.
+    :param p: number of periods to be forecasted.
+    :param seasonality_mode: multiplicative and/or 
+               additive seasonality.
+    :param changepoint_prior_scale: list of floats, 
+               tests the influence of the changepoints. 
+    :param holidays_prior_scale: list of floats, 
+               tests the influence of the holidays.
+    :param n_changepoints: list of int, 
+               maximum number of trend changepoints allowed 
+               when modelling the trend. 
+  
+  :return 
+     Optimal parameters for the prophet model. 
+  
+  """
+  if dtf_train.empty:
+        raise ValueError("Input series must be not empty.")
+  
+  params_grid = {'seasonality_mode':seasonality_mode,
+               'changepoint_prior_scale':changepoint_prior_scale,
+              'holidays_prior_scale':holidays_prior_scale,
+              'n_changepoints' : n_changepoints}
+
+  grid = ParameterGrid(params_grid)
+
+  model_parameters = pd.DataFrame(columns = ['MAPE','Parameters'])
+    
+  for p in grid:
+        test = pd.DataFrame()
+        random.seed(0)
+        train_model =Prophet(changepoint_prior_scale = p['changepoint_prior_scale'],
+                            holidays_prior_scale = p['holidays_prior_scale'],
+                            n_changepoints = p['n_changepoints'],
+                            seasonality_mode = p['seasonality_mode'],
+                            weekly_seasonality=True,
+                            daily_seasonality = True,
+                            yearly_seasonality = True,
+                            holidays=holiday, 
+                            interval_width=0.95)
+        train_model.add_country_holidays(country_name='GR')
+        test=dtf_train
+        test.columns=['ds', 'y']
+        train_model.fit(test)
+        train_forecast = train_model.make_future_dataframe(periods=p, freq='15T',include_history = False)
+        train_forecast = train_model.predict(train_forecast)
+        test=train_forecast[['ds','yhat']]
+
+        Actual = ts_test.iloc[:p,]
+        MAPE = mean_absolute_percentage_error(Actual,abs(test['yhat']))
+      
+        print('Mean Absolute Percentage Error(MAPE)------------------------------------',MAPE)
+        model_parameters = model_parameters.append({'MAPE':MAPE,'Parameters':p},ignore_index=True)
+      
+  optimals = model_parameters.groupby('Data', as_index=False).max()
+  optimals = optimals.merge(model_parameters, on=['MAPE', 'Data'], how='left')
+  
+  return optimals
+
+def fit_prophet(dtf_train, lst_exog, 
+                freq):
+  '''
+  Fits prophet on the Data. 
+  Prophet makes use of a decomposable time series model with three main model components:
+      y = trend + seasonality + holidays
+
+  They are combined in this equation: y(t) = g(t) + s(t) + h(t) + e(t)
+
+  - g(t): trend models non-periodic changes; linear or logistic. 
+  - s(t): seasonality represents periodic changes; i.e. weekly, monthly, yearly. 
+  - h(t): ties in effects of holidays; on potentially irregular schedules ≥ 1 day(s). 
+  - The error term e(t) represents any idiosyncratic changes which are not accommodated by the model; 
+        
+  :parameter
+      :param dtf_train: pandas Dataframe with columns 'ds' (dates), 
+               values, 'cap' (capacity if growth="logistic"), 
+               other additional regressor.
+      :param lst_exog: list - names of variables
+      :param freq: str - "D" daily, "M" monthly, "Y" annual, "MS" 
+                         monthly start ...
+  :return
+      trained model.
+  '''
+  
+  if dtf_train.empty:
+    raise ValueError("Input series must be not empty.")
+  subdf = dtf_train.dropna()
+  subdf.columns ['ds', 'y']
+  
+  #Adding the holidays as a parameter:
+  holiday = pd.DataFrame([]) 
+  for date, name in sorted(holidays.Greece(years=list(range (pd.DatetimeIndex(dtf_train['ds']).year[0], pd.DatetimeIndex(dtf_train['ds']).year[-1] +1 ))).items()):
+    holiday = holiday.append(pd.DataFrame({'ds': date, 'holiday': "GR-Holidays"}, index=[0]), ignore_index=True)
+  holiday['ds'] = pd.to_datetime(holiday['ds'], format='%Y-%m-%d', errors='ignore')
+
+  model = Prophet(growth="linear", 
+                    n_changepoints=100,
+                    yearly_seasonality="auto", 
+                    weekly_seasonality="auto", 
+                    daily_seasonality=True,
+                    holidays=holiday, 
+                    seasonality_mode = 'multiplicative')
+    
+  model.add_country_holidays(country_name = 'GR')
+  model = model.fit(subdf)
+    
+  return model
+
+def test_prophet(dtf_test, model, 
+                  freq, p):
+  
+ """
+ This function makes the prediction using the model created in the fit_prophet function. 
+ 
+ :parameter
+      :param dtf_test: pandas Dataframe containing the test set
+               with columns 'ds' (dates), 
+               values, 'cap' (capacity if growth="logistic"), 
+               other additional regressor.
+      :param model: model from the fit_prophet function.
+      :param p: number of periods to be forecasted.
+      :param freq: str - "D" daily, "M" monthly, "Y" annual, "MS" 
+                         monthly start ...
+  :return
+      DataFrame containing the true and forecasted values.
+ """
+
+    if dtf_test.empty:
+        raise ValueError("Test series must be not empty.")
+    elif not isinstance (p, (int)):
+        raise ValueError("p must be an integer.")
+  
+    dtf_prophet = model.make_future_dataframe(periods=p), 
+                  freq=freq, include_history=True)
+      
+    dtf_prophet = model.predict(dtf_prophet)
+    dtf_prophet = dtf_prophet.round()
+    dtf_forecast = dtf_test.merge(dtf_prophet[["ds","yhat"]], 
+                how="left").rename(columns={'yhat':'forecast',  
+                'y':'ts'}).set_index("ds")
+
+    return dtf_forecast
+
+
 if __name__ == '__main__':
     """
     This module is not supposed to run as a stand-alone module.
