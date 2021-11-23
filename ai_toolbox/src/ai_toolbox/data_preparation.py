@@ -135,6 +135,7 @@ def clean_ts_integrate(data, measurement_reading_type):
 
     return df_clean
 
+
 if __name__ == '__main__':
     """
     This module is not supposed to run as a stand-alone module.

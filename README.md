@@ -8,3 +8,12 @@ machine learning pipeline in the context of WP5 and related business cases and u
 For the language-agnostic documentation, please refer to: 
 https://github.com/biggproject/biggdocs
 
+## License
+This library depends on other popular open-source libraries in the AI field, from which it will retain the licenses.
+This is a semi-exhaustive list of the dependencies and their licenses:
+
+* [scikit-learn](https://github.com/scikit-learn/scikit-learn) [license](https://github.com/scikit-learn/scikit-learn/blob/main/COPYING)
+* [pandas](https://github.com/pandas-dev/pandas) [license](https://github.com/pandas-dev/pandas/blob/master/LICENSE)
+* [numpy](https://github.com/numpy/numpy) [license](https://github.com/numpy/numpy/blob/main/LICENSE.txt)
+* [statsmodels](https://github.com/statsmodels/statsmodels) [license](https://github.com/statsmodels/statsmodels/blob/main/LICENSE.txt)
+

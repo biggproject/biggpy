@@ -36,7 +36,7 @@ pip3 install .
 ```
 
 ## Requirements
-Requires-Python: ">=3.6"
+Requires-Python: ">=3.6, <3.9"
 
 
 ### Examples

@@ -11,7 +11,7 @@ from ai_toolbox import data_transformation
 from pandas.testing import assert_frame_equal
 
 
-class DataTransformation(unittest.TestCase):
+class TestDataTransformation(unittest.TestCase):
     """Class to test the data_transformation module"""
 
     @classmethod

@@ -5,11 +5,12 @@ import unittest
 
 import numpy as np
 import pandas as pd
-from ai_toolbox import data_preparation
 from pandas.testing import assert_frame_equal, assert_series_equal
 
+from ai_toolbox import data_preparation
 
-class DataPreparation(unittest.TestCase):
+
+class TestDataPreparation(unittest.TestCase):
     """Class to test the data_preparation module"""
 
     @classmethod
@@ -62,6 +63,8 @@ class DataPreparation(unittest.TestCase):
         delta = [30.0, -29.0, 19.0, 8.0, 16.0, -44.0, 2.0, 9.0, 45.0, -56.0, 23.0, 66.0, -79.0, 22.0, 13.0, -26.0]
         cls.df_delta = pd.Series(data=delta, index=pd.date_range('12/11/2021', freq='15T', periods=len(delta)))
 
+    # detect_time_step tests below
+
     def test_detect_time_step_for_irregular_time_series(self):
         """ Test that detect_time_step works with an irregular time series """
 
@@ -109,6 +112,8 @@ class DataPreparation(unittest.TestCase):
 
         self.assertRaises(ValueError, data_preparation.detect_time_step, self.df_two_columns)
 
+    # align_time_grid tests below
+
     def test_align_time_grid_raises_if_empty_series(self):
         """ Test that align_time_grid raises ValueError in case of empty time series """
 
@@ -132,6 +137,8 @@ class DataPreparation(unittest.TestCase):
             expected_result = pd.DataFrame(
                 data=result_list[i], index=pd.date_range(start='2021/10/01', periods=3, freq='3T'), columns=['numbers'])
             assert_frame_equal(df_aligned, expected_result, check_exact=False, check_dtype=False)
+
+    # clean_ts_integrate tests below
 
     def test_clean_ts_integrate_raises_if_wrong_type(self):
         """ Test that clean_ts_integrate raises returns if incorrect measurement type """
