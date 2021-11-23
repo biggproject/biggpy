@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import pandas as pd
+import numpy as np
+
 import matplotlib.pyplot as plt
 import statsmodels.tsa.api as smt
 import statsmodels.api as sm
@@ -70,7 +72,7 @@ def test_stationarity_acf_pacf (data, sample, maxLag):
                             y1=dtf_ts['lower'].head(sample_size), 
                             y2=dtf_ts['upper'].head(sample_size),
                             color='lightskyblue')
-  adfuller_test = sm.tsa.stattools.adfuller(data, maxlag=maxlag,
+  adfuller_test = sm.tsa.stattools.adfuller(data, maxlag=maxLag,
                                                     autolag="AIC")
   adf, p, critical_value = adfuller_test[0], adfuller_test[1], adfuller_test[4]["5%"]
   p = round(p, 3)
@@ -92,33 +94,33 @@ def split_train_test(data, test, plot):
   '''
   Split train/test from any given data point.
   :parameter
-    :param ts: pandas Series
+    :param data: pandas Series
     :param test: num or str - test size    or index position
                  (ex. "yyyy-mm-dd", 1000)
   :return
     ts_train, ts_test
   '''
-   if data.empty:
+  if data.empty:
         raise ValueError("Input series must be not empty.")
    
-   ## define splitting point
-   if type(test) is float:
-        split = int(len(ts)*(1-test))
+  ## define splitting point
+  if type(test) is float:
+        split = int(len(data)*(1-test))
         perc = test
-   elif type(test) is str:
-        split = ts.reset_index()[ 
-                      ts.reset_index().iloc[:,0]==test].index[0]
-        perc = round(len(ts[split:])/len(ts), 2)
-   else:
+  elif type(test) is str:
+        split = data.reset_index()[ 
+                      data.reset_index().iloc[:,0]==test].index[0]
+        perc = round(len(data[split:])/len(data), 2)
+  else:
         split = test
-        perc = round(len(ts[split:])/len(ts), 2)
-   print("--- splitting at index: ", split, "|", 
-          ts.index[split], "| test size:", perc, " ---")
+        perc = round(len(data[split:])/len(data), 2)
+  print("--- splitting at index: ", split, "|", 
+          data.index[split], "| test size:", perc, " ---")
     
-   ## split ts
-   ts_train = ts.head(split)
-   ts_test = ts.tail(len(ts)-split)
-   if plot is True:
+  ## split data
+  ts_train = data.head(split)
+  ts_test = data.tail(len(data)-split)
+  if plot is True:
         fig, ax = plt.subplots(nrows=1, ncols=2, sharex=False, 
                                sharey=True, figsize=(15,5))
         ts_train.plot(ax=ax[0], grid=True, title="Train", 
@@ -129,7 +131,7 @@ def split_train_test(data, test, plot):
         ax[1].set(xlabel=None)
         plt.show()
         
-   return ts_train, ts_test
+  return ts_train, ts_test
 
 def evaluate_forecast(dtf, title, plot=True, figsize=(20,13)):
   '''
@@ -155,6 +157,7 @@ def evaluate_forecast(dtf, title, plot=True, figsize=(20,13)):
         residuals_std = dtf["residuals"].std()
         error_mean = dtf["error"].mean()
         error_std = dtf["error"].std()
+        mape = dtf["error_pct"].apply(lambda x: np.abs(x)).mean()  
         mae = dtf["error"].apply(lambda x: np.abs(x)).mean()
         mse = dtf["error"].apply(lambda x: x**2).mean()
         rmse = np.sqrt(mse)  #root mean squared error
@@ -309,7 +312,7 @@ def test_sarimax (ts_train, ts_test, exog_test, p, model):
         dtf_test["forecast"] = model.predict(start=len(ts_train)+1, 
                             end=len(ts_train)+len(ts_test[:(p)-1]), 
                             exog=exog_test[:p])
-  dtf_test = dtf.round()
+  dtf_test = dtf_test.round()
   return dtf_test
 
 def mean_absolute_percentage_error(y_true, y_pred): 
@@ -347,14 +350,14 @@ def input_prophet (ts_train, ts_test):
   dtf_train = ts_train.reset_index()
   dtf_train.rename(index=str,columns={'time':'ds'},inplace=True)
 
-  dtf_train= pd.merge(dtf_train, temp, how='left', on='ds')
+  #dtf_train= pd.merge(dtf_train, temp, how='left', on='ds')
   dtf_train = dtf_train.fillna(0)
 
   dtf_test = ts_test.reset_index()
   dtf_test.rename(index=str,columns={'time':'ds'},inplace=True)
 
-  dtf_test= pd.merge(dtf_test, temp, how='left', on='ds')
-   dtf_test = dtf_test.fillna(0)
+  #dtf_test= pd.merge(dtf_test, temp, how='left', on='ds')
+  dtf_test = dtf_test.fillna(0)
 
   dtf_train['ds'] = dtf_train['ds'].dt.tz_localize(None)
   dtf_test['ds'] = dtf_test['ds'].dt.tz_localize(None)
@@ -362,7 +365,7 @@ def input_prophet (ts_train, ts_test):
   return dtf_train, dtf_test
 
 
-def param_tuning_prophet (dtf_train, p, seasonality_mode, 
+def param_tuning_prophet (dtf_train, p, seasonality_mode, ts_test,
                          changepoint_prior_scale, holidays_prior_scale, n_changepoints):
   """
   This function performs a search on all the parameters of the parameter grid defined and identifies 
@@ -375,6 +378,7 @@ def param_tuning_prophet (dtf_train, p, seasonality_mode,
     :param p: number of periods to be forecasted.
     :param seasonality_mode: multiplicative and/or 
                additive seasonality.
+    :param ts_test: timeSeries used to test the model.
     :param changepoint_prior_scale: list of floats, 
                tests the influence of the changepoints. 
     :param holidays_prior_scale: list of floats, 
@@ -389,6 +393,12 @@ def param_tuning_prophet (dtf_train, p, seasonality_mode,
   """
   if dtf_train.empty:
         raise ValueError("Input series must be not empty.")
+  
+  holiday = pd.DataFrame([])
+  for date, name in sorted(holidays.Greece(years=[2019,2020,2021]).items()):
+    #pd.DatetimeIndex(holiday['ds']).year[-1] in place of 2021
+    holiday = holiday.append(pd.DataFrame({'ds': date, 'holiday': "GR-Holidays"}, index=[0]), ignore_index=True)
+  holiday['ds'] = pd.to_datetime(holiday['ds'], format='%Y-%m-%d', errors='ignore')
   
   params_grid = {'seasonality_mode':seasonality_mode,
                'changepoint_prior_scale':changepoint_prior_scale,
@@ -498,21 +508,21 @@ def test_prophet(dtf_test, model,
       DataFrame containing the true and forecasted values.
  """
 
-    if dtf_test.empty:
+ if dtf_test.empty:
         raise ValueError("Test series must be not empty.")
-    elif not isinstance (p, (int)):
+ elif not isinstance (p, (int)):
         raise ValueError("p must be an integer.")
   
-    dtf_prophet = model.make_future_dataframe(periods=p), 
+ dtf_prophet = model.make_future_dataframe(periods=p, 
                   freq=freq, include_history=True)
       
-    dtf_prophet = model.predict(dtf_prophet)
-    dtf_prophet = dtf_prophet.round()
-    dtf_forecast = dtf_test.merge(dtf_prophet[["ds","yhat"]], 
+ dtf_prophet = model.predict(dtf_prophet)
+ dtf_prophet = dtf_prophet.round()
+ dtf_forecast = dtf_test.merge(dtf_prophet[["ds","yhat"]], 
                 how="left").rename(columns={'yhat':'forecast',  
                 'y':'ts'}).set_index("ds")
 
-    return dtf_forecast
+ return dtf_forecast
 
 
 if __name__ == '__main__':
