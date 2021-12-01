@@ -7,8 +7,9 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytz
-from ai_toolbox import data_transformation
 from pandas.testing import assert_frame_equal
+
+from ai_toolbox import data_transformation
 
 
 class TestDataTransformation(unittest.TestCase):

@@ -3,11 +3,13 @@
 
 import unittest
 
-from ai_toolbox import data_modelling
 from numpy.testing import assert_array_equal
 from sklearn import svm
-from sklearn.datasets import load_iris
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import KFold
 from sklearn.utils.validation import NotFittedError
+
+from ai_toolbox import data_modelling
 
 
 class TestDataModelling(unittest.TestCase):
@@ -15,7 +17,9 @@ class TestDataModelling(unittest.TestCase):
 
     full_path = "/tmp/test"
     full_path_ext = "{}.joblib".format(full_path)
-    X, y = load_iris(return_X_y=True)
+    df = load_breast_cancer(as_frame=True).frame
+    X = df.iloc[:, :-1]
+    y = df.target
     clf = svm.SVC()
     fitted_model = svm.SVC().fit(X, y)
 
@@ -135,6 +139,92 @@ class TestDataModelling(unittest.TestCase):
         my_model = data_modelling.serialize_model(self.fitted_model, self.full_path)
         predictions = data_modelling.deserialize_and_predict(my_model, self.X[-8:])
         assert_array_equal(self.fitted_model.predict(self.X[-8:]), predictions)
+
+    # evaluate_model_cv_with_tuning tests below
+
+    def test_evaluate_model_cv_with_tuning_raises_if_not_cv_objects(self):
+        """
+        Test that evaluate_model_cv_with_tuning raises in case cv_inner and
+        cv_outer are not cross validator objects.
+        """
+
+        self.assertRaises(TypeError,
+                          data_modelling.evaluate_model_cv_with_tuning,
+                          model_family=self.clf,
+                          parameter_grid={},
+                          X_data=self.X,
+                          y_data=self.y,
+                          cv_outer=2,
+                          cv_inner=2,
+                          scoring=None)
+
+    def test_evaluate_model_cv_with_tuning_parallel_raises_if_not_cv_objects(self):
+        """
+        Test that evaluate_model_cv_with_tuning_parallel raises in case cv_inner and
+        cv_outer are not cross validator objects.
+        """
+
+        self.assertRaises(TypeError,
+                          data_modelling.evaluate_model_cv_with_tuning_parallel,
+                          model_family=self.clf,
+                          parameter_grid={},
+                          X_data=self.X,
+                          y_data=self.y,
+                          cv_outer=2,
+                          cv_inner=2,
+                          scoring=None)
+
+    def test_evaluate_model_cv_with_tuning_raises_if_wrong_scoring_type(self):
+        """
+        Test that evaluate_model_cv_with_tuning raises in case scoring is not
+        str, list, tuple or None.
+        """
+
+        cv_splitter = KFold(n_splits=5, shuffle=True, random_state=1)
+        self.assertRaises(TypeError,
+                          data_modelling.evaluate_model_cv_with_tuning,
+                          model_family=self.clf,
+                          parameter_grid={},
+                          X_data=self.X,
+                          y_data=self.y,
+                          cv_outer=cv_splitter,
+                          cv_inner=cv_splitter,
+                          scoring=4)
+
+    def test_evaluate_model_cv_with_tuning_parallel_raises_if_wrong_scoring_type(self):
+        """
+        Test that evaluate_model_cv_with_tuning_parallel raises in case scoring is not
+        str, list, tuple or None.
+        """
+
+        cv_splitter = KFold(n_splits=5, shuffle=True, random_state=1)
+        self.assertRaises(TypeError,
+                          data_modelling.evaluate_model_cv_with_tuning_parallel,
+                          model_family=self.clf,
+                          parameter_grid={},
+                          X_data=self.X,
+                          y_data=self.y,
+                          cv_outer=cv_splitter,
+                          cv_inner=cv_splitter,
+                          scoring=4)
+
+    def test_identify_best_model_raises_if_compare_with_not_in_scoring(self):
+        """
+        Test that evaluate_model_cv_with_tuning_parallel raises in case scoring is not
+        str, list, tuple or None.
+        """
+
+        cv_splitter = KFold(n_splits=5, shuffle=True, random_state=1)
+        self.assertRaises(ValueError,
+                          data_modelling.identify_best_model,
+                          X_data=self.X,
+                          y_data=self.y,
+                          model_families_parameter_grid={},
+                          cv_outer=cv_splitter,
+                          cv_inner=cv_splitter,
+                          scoring=['precision', 'recall', 'accuracy'],
+                          compare_with='not_in_scoring'
+                          )
 
     @classmethod
     def tearDownClass(cls):
