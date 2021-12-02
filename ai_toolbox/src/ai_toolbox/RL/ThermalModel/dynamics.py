@@ -6,6 +6,7 @@ import torch
 
 ###############################################################################################
 ###############################################################################################
+# - Manu Lahariya, IDLab, 2/12/21
 # Dynamics functions: functions based on physics of space heating
 # - these functions will be used directly by the PhyCell class, which will be the recurrent unit
 #   of the Thermal model

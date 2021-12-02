@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 #!pip install torch
-import torch.nn as nn
+import torch
 
 ###############################################################################################
 ###############################################################################################
+# - Manu Lahariya, IDLab, 2/12/21
 # DenseNet: used to create a dense neural network used for prediction of disturbance variables
 #
 #
@@ -23,9 +24,9 @@ def DenseNet(layers, bias = True):
     output_dim = layers[-1]
     hidden_dim = layers[1:-1]
     current_dim = input_dim
-    Net = nn.ModuleList()
+    Net = torch.nn.ModuleList()
     for hdim in hidden_dim:
-        Net.append(nn.Linear(current_dim, hdim, bias=bias))
+        Net.append(torch.nn.Linear(current_dim, hdim, bias=bias))
         current_dim = hdim
-    Net.append(nn.Linear(current_dim, output_dim))
+    Net.append(torch.nn.Linear(current_dim, output_dim))
     return Net
