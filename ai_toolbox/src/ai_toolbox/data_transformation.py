@@ -62,7 +62,7 @@ def yearly_profile_detection(data, exclude_days=None):
         if isinstance(exclude_days, pd.Series):
             # Assuming exclude_days is a boolean series where True means filter out the day
             # Get the datetimeindex of True values
-            exclude_days = exclude_days.index[exclude_days]
+            exclude_days = exclude_days.index[exclude_days].normalize()
             data = data[~data.index.normalize().isin(exclude_days)]
         elif isinstance(exclude_days, list):
             # If it is a list convert to utc datetimeindex before filtering
@@ -149,7 +149,7 @@ def weekly_profile_detection(data, exclude_days=None):
         if isinstance(exclude_days, pd.Series):
             # Assuming exclude_days is a boolean series where True means filter out the day
             # Get the datetimeindex of True values
-            exclude_days = exclude_days.index[exclude_days]
+            exclude_days = exclude_days.index[exclude_days].normalize()
             mask = pd.Series(data.index.normalize().isin(exclude_days), index=data.index)
             data = data.mask(mask)
         elif isinstance(exclude_days, list):

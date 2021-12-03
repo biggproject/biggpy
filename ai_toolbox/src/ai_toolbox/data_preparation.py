@@ -34,7 +34,7 @@ def detect_time_step(data):
     best_frequency = None
 
     # Clean-up the data by dropping NaN values and sorting the index (irregular time series) .
-    # Otherwise the function will be misled when guessing the frequency by the DateTimeIndex
+    # Otherwise, the function will be misled when guessing the frequency by the DateTimeIndex
     df_clean = data.dropna().sort_index()
 
     # Check if the series frequency is set and return it
@@ -141,6 +141,7 @@ if __name__ == '__main__':
     This module is not supposed to run as a stand-alone module.
     This part below is only for testing purposes. 
     """
+
     from os.path import join
 
     dataset_dir = "/home/rick/Coding/Notebooks/datasets"
