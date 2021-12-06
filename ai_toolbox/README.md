@@ -8,7 +8,7 @@ For the language-agnostic documentation, please refer to:
 https://github.com/biggproject/biggdocs
 
 ## Installation
-It is highly recommended to setup a virtual environment before using this package:
+It is highly recommended setting up a virtual environment before using this package:
 
 ```bash
 python3 -m venv ai_toolbox_venv/
@@ -40,13 +40,8 @@ Requires-Python: ">=3.6, <3.9"
 
 
 ### Examples
-Some examples on how to import the library after it is installed:
-
-```python
-import ai_toolbox
-from ai_toolbox import data_preparation
-from ai_toolbox.data_preparation import detect_time_step
-```
+Some examples of usage are available as Jupyter notebooks in the directory "notebooks":
+https://github.com/biggproject/biggpy/tree/main/ai_toolbox/notebooks
 
 ## Tests
 
