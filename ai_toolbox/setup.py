@@ -129,7 +129,7 @@ setup(
         'pandas>=1.1.2',
         'scikit-learn>=0.24.2',
         'statsmodels>=0.12.2',
-        'torch>=1.10.0'
+        'torch>=1.10.0',
         'pytorch-lightning>=1.5.4'
     ],
 )

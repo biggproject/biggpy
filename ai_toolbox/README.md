@@ -39,7 +39,7 @@ pip3 install .
 Requires-Python: ">=3.6, <3.9"
 
 
-### Examples
+## Examples
 Some examples of usage are available as Jupyter notebooks in the directory "notebooks":
 https://github.com/biggproject/biggpy/tree/main/ai_toolbox/notebooks
 
