@@ -201,9 +201,9 @@ def identify_best_model(X_data, y_data, model_families_parameter_grid, cv_outer,
         _ cv_results_final: dict. A dict with keys as column headers and values as columns representing the test score
             for each split, each parameter combination, the rank of each set of parameters and the mean test score and
             standard deviation. Can be imported into a DataFrame.
-        - cv_results_evaluation: list of dict. A list of dictionaries where each element represents the results obtained
-            on a specific model instance in terms of performance evaluation and selected hyper-parameters.
-            Can be imported into a DataFrame.
+        - cv_results_evaluation: dict. A dictionary containing the results of the performance evaluation obtained
+            with the nested cross-validation, i.e. the mean cross-validated score and standard deviation for each
+            model family and each scoring function specified.
     """
 
     if not all(isinstance(i, BaseCrossValidator) for i in [cv_outer, cv_inner]):
@@ -217,7 +217,7 @@ def identify_best_model(X_data, y_data, model_families_parameter_grid, cv_outer,
     best_model_family, mean_score, std_score = None, None, None
 
     for model_family, parameter_grid in model_families_parameter_grid.items():
-        double_cv_results[model_family] = evaluate_model_cv_with_tuning_parallel(
+        double_cv_results[str(model_family)] = evaluate_model_cv_with_tuning_parallel(
             model_family=model_family,
             X_data=X_data,
             y_data=y_data,
