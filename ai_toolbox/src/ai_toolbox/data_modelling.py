@@ -217,7 +217,7 @@ def identify_best_model(X_data, y_data, model_families_parameter_grid, cv_outer,
     best_model_family, mean_score, std_score = None, None, None
 
     for model_family, parameter_grid in model_families_parameter_grid.items():
-        double_cv_results[str(model_family)] = evaluate_model_cv_with_tuning_parallel(
+        double_cv_results[model_family] = evaluate_model_cv_with_tuning_parallel(
             model_family=model_family,
             X_data=X_data,
             y_data=y_data,
@@ -257,6 +257,9 @@ def identify_best_model(X_data, y_data, model_families_parameter_grid, cv_outer,
         cv=cv_inner,
         refit=True
         ).fit(X=X_data, y=y_data)
+
+    # Stringify double_cv_results keys before returning it
+    double_cv_results = {str(key): value for key, value in double_cv_results.items()}
 
     return search.best_estimator_, search.best_params_, mean_score, std_score, search.cv_results_, double_cv_results
 
