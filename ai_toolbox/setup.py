@@ -75,7 +75,7 @@ setup(
 
     # This should be a valid email address corresponding to the author listed
     # above.
-    author_email='',  # Optional
+    author_email='dl_bigg_wp5@realdolmen.com',  # Optional
 
     # Classifiers help users find your project by categorizing it.
     #
@@ -126,10 +126,11 @@ setup(
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
-        'pandas>=1.1.2',
+        'torch>=1.10.0',
         'scikit-learn>=0.24.2',
         'statsmodels>=0.12.2',
-        'torch>=1.10.0',
+        'pandas>=1.1.2',
+        'matplotlib>=3.3.2',
         'pytorch-lightning>=1.5.4'
     ],
 )
