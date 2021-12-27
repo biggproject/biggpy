@@ -4,9 +4,90 @@
 from os.path import isabs, splitext, dirname, isdir
 
 from numpy import mean, std
+from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.linear_model import LinearRegression
 from sklearn.metrics import get_scorer
 from sklearn.model_selection import GridSearchCV, BaseCrossValidator, cross_validate
-from sklearn.utils.validation import check_is_fitted
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
+
+
+class PolynomialRegression(BaseEstimator, RegressorMixin):
+    """
+    Polynomial regression estimator, created to offer a uniform interface
+    to the other functions of this module.
+    This class transforms the features into 'PolynomialFeatures' before
+    fitting the data with the 'LinearRegression' estimator.
+    """
+
+    def __init__(self, degree=4, fit_intercept=True, normalize=False, copy_X=True,
+                 n_jobs=None, positive=False):
+        self.degree = degree
+        self.fit_intercept = fit_intercept
+        self.normalize = normalize
+        self.copy_X = copy_X
+        self.n_jobs = n_jobs
+        self.positive = positive
+        self.model = Pipeline([
+            ("poly", PolynomialFeatures(
+                degree=self.degree,
+                include_bias=False
+            )),
+            ('linear', LinearRegression(
+                fit_intercept=True,
+                normalize=normalize,
+                copy_X=copy_X,
+                n_jobs=n_jobs,
+                positive=positive))
+        ])
+        self.X_ = None
+        self.y_ = None
+        self.coef_ = None
+        self.intercept_ = None
+
+    def fit(self, X, y):
+
+        # Check that X and y have correct shape
+        X, y = check_X_y(X, y)
+        self.X_ = X
+        self.y_ = y
+
+        # Fit the model and store the coefficients and intercept internally
+        fitted_model = self.model.fit(X=X, y=y)
+        self.coef_ = self.model.named_steps["linear"].coef_
+        self.intercept_ = self.model.named_steps["linear"].intercept_
+
+        return fitted_model
+
+    def predict(self, X):
+
+        # Check is fit had been called
+        check_is_fitted(self)
+        # Input validation
+        X = check_array(X)
+        return self.model.predict(X=X)
+
+    def set_params(self, **parameters):
+        """
+        Redefine 'set_params', used by optimization frameworks, e.g. GridSearchCV,
+        to override the parameters set in the _init_ method.
+        """
+
+        super(PolynomialRegression, self).set_params(**parameters)
+        self.model = Pipeline([
+            ("poly", PolynomialFeatures(
+                degree=self.degree,
+                include_bias=False
+            )),
+            ('linear', LinearRegression(
+                fit_intercept=self.fit_intercept,
+                normalize=self.normalize,
+                copy_X=self.copy_X,
+                n_jobs=self.n_jobs,
+                positive=self.positive))
+        ])
+        return self
 
 
 def evaluate_model_cv_with_tuning(model_family, X_data, y_data, parameter_grid, cv_outer, cv_inner, scoring=None):
@@ -336,42 +417,3 @@ if __name__ == '__main__':
     This module is not supposed to run as a stand-alone module.
     This part below is only for testing purposes. 
     """
-
-    from sklearn.datasets import load_breast_cancer
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.svm import SVC
-    from sklearn.model_selection import KFold
-    from time import time
-
-    start_time = time()
-
-    df = load_breast_cancer(as_frame=True).frame
-    X = df.iloc[:, :-1]
-    y = df.target
-
-    cv_splitter_outer = KFold(n_splits=5, shuffle=True, random_state=1)
-    cv_splitter_inner = KFold(n_splits=3, shuffle=True, random_state=1)
-    grid = {
-        RandomForestClassifier(random_state=1): {
-            'n_estimators': [10, 100, 500],
-            'max_features': [2, 4, 6]
-        },
-        SVC(random_state=1): {'C': [1, 10, 100]}
-    }
-    results = identify_best_model(
-        X_data=X,
-        y_data=y,
-        model_families_parameter_grid=grid,
-        cv_inner=cv_splitter_inner,
-        cv_outer=cv_splitter_outer,
-        scoring=['precision', 'recall', 'accuracy'],
-        compare_with='recall'
-    )
-
-    print("Best model: {}".format(results[0]))
-    print("Best parameters: {}".format(results[1]))
-    print("Mean score: {}".format(results[2]))
-    print("Std score: {}".format(results[3]))
-    print("Evaluation results: {}".format(results[5]))
-
-    print("Time to identify best model: {} seconds.".format(time()-start_time))
