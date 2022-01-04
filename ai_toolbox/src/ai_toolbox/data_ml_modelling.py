@@ -1,40 +1,39 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-import holidays
 import random
+
+import holidays
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pmdarima as pm
-import statsmodels.tsa.api as smt
 import statsmodels.api as sm
-# !pip install pmdarima
+import statsmodels.tsa.api as smt
 from fbprophet import Prophet
 from sklearn.model_selection import ParameterGrid
 
 
-
-def test_stationarity_acf_pacf(data, sample, maxLag):
+def test_stationarity_acf_pacf(data, sample, max_lag):
     """
     This function tests the stationarity and plot the autocorrelation
     and partial autocorrelation of the time series.
     Test stationarity by:
-    - running Augmented Dickey-Fuller test wiht 95%
+    - running Augmented Dickey-Fuller test with 95%
     In statistics, the Dickey–Fuller test tests the null hypothesis
     that a unit root is present in an autoregressive model.
     The alternative hypothesis is different depending
     on which version of the test is used,
     but is usually stationarity or trend-stationarity.
     - plotting mean and variance of a sample from data
-    - plottig autocorrelation and partial autocorrelation
+    - plotting autocorrelation and partial autocorrelation
 
     p-value > 0.05: Fail to reject the null hypothesis (H0),
     the data has a unit root and is non-stationary.
     p-value <= 0.05: Reject the null hypothesis (H0),
     the data does not have a unit root and is stationary.
     This function is used to verify stationarity
-    so that suitable forecasting methodes can be applied.
+    so that suitable forecasting methods can be applied.
 
     Partial autocorrelation is a summary of the relationship
     between an observation in a time series with observations
@@ -44,7 +43,7 @@ def test_stationarity_acf_pacf(data, sample, maxLag):
     of any correlations due to the terms at shorter lags.
 
     The autocorrelation for an observation and an observation
-    at a prior time step is comprised of both the direct correlation
+    at a prior time step comprises both the direct correlation
     and indirect correlations. These indirect correlations are
     a linear function of the correlation of the observation,
     with observations at intervening time steps.
@@ -55,7 +54,7 @@ def test_stationarity_acf_pacf(data, sample, maxLag):
     :parameter
      :param data: timeSeries for which the stationarity as to be evaluated.
      :param sample: Sample (float) of the data that will be evaluated.
-     :param maxLag: Maximum number of lag which included in test.
+     :param max_lag: Maximum number of lag which included in test.
                     The default value is 12*(nobs/100)^{1/4}.
     :return:
       plot of the mean and variance of the sample with the p-value
@@ -67,101 +66,97 @@ def test_stationarity_acf_pacf(data, sample, maxLag):
     elif 0.0 > sample or sample > 1.0:
         raise ValueError("Sample value should be between 0 and 1")
 
-    fig = plt.figure(figsize=(15, 10))
     ts_ax = plt.subplot2grid(shape=(2, 2), loc=(0, 0), colspan=2)
     pacf_ax = plt.subplot2grid(shape=(2, 2), loc=(1, 0))
     acf_ax = plt.subplot2grid(shape=(2, 2), loc=(1, 1))
     dtf_ts = data.to_frame(name="ts")
-    sample_size = int(len(data)*sample)
+    sample_size = int(len(data) * sample)
     dtf_ts["mean"] = dtf_ts["ts"].head(sample_size).mean()
-    dtf_ts["lower"] = dtf_ts["ts"].head(sample_size).mean()
-    + dtf_ts["ts"].head(sample_size).std()
-    dtf_ts["upper"] = dtf_ts["ts"].head(sample_size).mean()
-    - dtf_ts["ts"].head(sample_size).std()
+    dtf_ts["lower"] = dtf_ts["ts"].head(sample_size).mean() + dtf_ts["ts"].head(sample_size).std()
+    dtf_ts["upper"] = dtf_ts["ts"].head(sample_size).mean() - dtf_ts["ts"].head(sample_size).std()
     dtf_ts["ts"].plot(ax=ts_ax, color="black", legend=False)
     dtf_ts["mean"].plot(
-      ax=ts_ax, legend=False, color="red",
-      linestyle="--", linewidth=0.7)
+        ax=ts_ax, legend=False, color="red",
+        linestyle="--", linewidth=0.7)
     ts_ax.fill_between(
-      x=dtf_ts.index, y1=dtf_ts['lower'],
-      y2=dtf_ts['upper'], color='lightskyblue', alpha=0.4)
+        x=dtf_ts.index, y1=dtf_ts['lower'],
+        y2=dtf_ts['upper'], color='lightskyblue', alpha=0.4)
     dtf_ts["mean"].head(sample_size).plot(
-      ax=ts_ax, legend=False,
-      color="red", linewidth=0.9)
+        ax=ts_ax, legend=False,
+        color="red", linewidth=0.9)
     ts_ax.fill_between(
-      x=dtf_ts.index, y1=dtf_ts['lower'],
-      y2=dtf_ts['upper'], color='lightskyblue', alpha=0.4)
+        x=dtf_ts.index, y1=dtf_ts['lower'],
+        y2=dtf_ts['upper'], color='lightskyblue', alpha=0.4)
     dtf_ts["mean"].head(sample_size).plot(
-      ax=ts_ax, legend=False,
-      color="red", linewidth=0.9)
+        ax=ts_ax, legend=False,
+        color="red", linewidth=0.9)
     ts_ax.fill_between(
-      x=dtf_ts.head(sample_size).index,
-      y1=dtf_ts['lower'].head(sample_size),
-      y2=dtf_ts['upper'].head(sample_size), color='lightskyblue')
+        x=dtf_ts.head(sample_size).index,
+        y1=dtf_ts['lower'].head(sample_size),
+        y2=dtf_ts['upper'].head(sample_size), color='lightskyblue')
     adfuller_test = sm.tsa.stattools.adfuller(
-      data, maxlag=maxLag,
-      autolag="AIC")
-    adf, p, critical_value = adfuller_test[0], adfuller_test[1],
-    adfuller_test[4]["5%"]
+        data, maxlag=max_lag, autolag="AIC")
+    adf, p, critical_value = adfuller_test[0], adfuller_test[1], adfuller_test[4]["5%"]
     p = round(p, 3)
     conclusion = "Stationary" if p < 0.05 else "Non-Stationary"
     ts_ax.set_title(
-      'Dickey-Fuller Test 95%: ' + conclusion +
-      '(p value: ' + str(p) + ')')
+        'Dickey-Fuller Test 95%: ' + conclusion +
+        '(p value: ' + str(p) + ')')
 
     # pacf (for AR) and acf (for MA)
     smt.graphics.plot_pacf(
-      data, lags=30, ax=pacf_ax,
-      title="Partial Autocorrelation (for AR component)")
+        data, lags=30, ax=pacf_ax,
+        title="Partial Autocorrelation (for AR component)")
     smt.graphics.plot_acf(
-      data, lags=30, ax=acf_ax,
-      title="Autocorrelation (for MA component)")
+        data, lags=30, ax=acf_ax,
+        title="Autocorrelation (for MA component)")
     plt.tight_layout()
 
 
 def split_train_test(data, test, plot):
-    '''
+    """
     Split train/test from any given data point.
     :parameter
       :param data: pandas Series
       :param test: num or str - test size    or index position
                    (ex. "yyyy-mm-dd", 1000)
+      :param plot: bool to decide if the 2 new time series have to be plotted
     :return
       ts_train, ts_test
-    '''
+    """
     if data.empty:
         raise ValueError("Input series must be not empty.")
 
     # define splitting point
     if type(test) is float:
-        split = int(len(data)*(1-test))
+        split = int(len(data) * (1 - test))
         perc = test
     elif type(test) is str:
         split = data.reset_index()[
-                        data.reset_index().iloc[:, 0] == test].index[0]
-        perc = round(len(data[split:])/len(data), 2)
+            data.reset_index().iloc[:, 0] == test].index[0]
+        perc = round(len(data[split:]) / len(data), 2)
     else:
         split = test
-        perc = round(len(data[split:])/len(data), 2)
+        perc = round(len(data[split:]) / len(data), 2)
     print(
-      "--- splitting at index: ", split, "|",
-      data.index[split], "| test size:", perc, " ---")
+        "--- splitting at index: ", split, "|",
+        data.index[split], "| test size:", perc, " ---")
 
     # split data
     ts_train = data.head(split)
-    ts_test = data.tail(len(data)-split)
+    ts_test = data.tail(len(data) - split)
     if plot is True:
         fig, ax = plt.subplots(
-          nrows=1, ncols=2, sharex=False,
-          sharey=True, figsize=(15, 5))
+            nrows=1, ncols=2,
+            sharey=True, figsize=(15, 5))
         ts_train.plot(
-          ax=ax[0], grid=True,
-          title="Train",
-          color="black")
+            ax=ax[0], grid=True,
+            title="Train",
+            color="black")
         ts_test.plot(
-          ax=ax[1], grid=True,
-          title="Test",
-          color="blue")
+            ax=ax[1], grid=True,
+            title="Test",
+            color="blue")
         ax[0].set(xlabel=None)
         ax[1].set(xlabel=None)
         plt.show()
@@ -169,16 +164,19 @@ def split_train_test(data, test, plot):
     return ts_train, ts_test
 
 
-def evaluate_forecast(dtf, title, plot=True, figsize=(20, 13)):
-    '''
+def evaluate_forecast(dtf, title, plot=True):
+    """
     Evaluation metrics for predictions.
 
     :parameter
       :param dtf: DataFrame with columns raw values, fitted training
                    values, predicted test values.
+      :param title: Title of the plot
+      :param plot:  Bool to visualize on a plot. Default is True.
+
     :return:
       DataFrame with raw ts and forecast.
-    '''
+    """
     if dtf.empty:
         raise ValueError("Input series must be not empty.")
 
@@ -195,18 +193,18 @@ def evaluate_forecast(dtf, title, plot=True, figsize=(20, 13)):
         error_std = dtf["error"].std()
         mape = dtf["error_pct"].apply(lambda x: np.abs(x)).mean()
         mae = dtf["error"].apply(lambda x: np.abs(x)).mean()
-        mse = dtf["error"].apply(lambda x: x**2).mean()
+        mse = dtf["error"].apply(lambda x: x ** 2).mean()
         rmse = np.sqrt(mse)
 
         # intervals
-        dtf["conf_int_low"] = dtf["forecast"] - 1.96*residuals_std
-        dtf["conf_int_up"] = dtf["forecast"] + 1.96*residuals_std
-        dtf["pred_int_low"] = dtf["forecast"] - 1.96*error_std
-        dtf["pred_int_up"] = dtf["forecast"] + 1.96*error_std
+        dtf["conf_int_low"] = dtf["forecast"] - 1.96 * residuals_std
+        dtf["conf_int_up"] = dtf["forecast"] + 1.96 * residuals_std
+        dtf["pred_int_low"] = dtf["forecast"] - 1.96 * error_std
+        dtf["pred_int_up"] = dtf["forecast"] + 1.96 * error_std
 
         # plot
         if plot is True:
-            fig = plt.figure(figsize=figsize)
+            fig = plt.figure(figsize=(20, 13))
             fig.suptitle(title, fontsize=20)
             ax1 = fig.add_subplot(2, 2, 1)
             ax2 = fig.add_subplot(2, 2, 2, sharey=ax1)
@@ -214,39 +212,39 @@ def evaluate_forecast(dtf, title, plot=True, figsize=(20, 13)):
             ax4 = fig.add_subplot(2, 2, 4)
             # training
             dtf[pd.notnull(dtf["model"])][["ts", "model"]].plot(
-              color=["black", "green"], title="Model", grid=True, ax=ax1)
+                color=["black", "green"], title="Model", grid=True, ax=ax1)
             ax1.set(xlabel=None)
             # test
             dtf[pd.isnull(dtf["model"])][["ts", "forecast"]].plot(
-              color=["black", "red"], title="Forecast", grid=True, ax=ax2)
+                color=["black", "red"], title="Forecast", grid=True, ax=ax2)
             ax2.fill_between(
-              x=dtf.index, y1=dtf['pred_int_low'],
-              y2=dtf['pred_int_up'], color='b', alpha=0.2)
+                x=dtf.index, y1=dtf['pred_int_low'],
+                y2=dtf['pred_int_up'], color='b', alpha=0.2)
             ax2.fill_between(
-              x=dtf.index, y1=dtf['conf_int_low'],
-              y2=dtf['conf_int_up'], color='b', alpha=0.3)
+                x=dtf.index, y1=dtf['conf_int_low'],
+                y2=dtf['conf_int_up'], color='b', alpha=0.3)
             ax2.set(xlabel=None)
             # residuals
             dtf[["residuals", "error"]].plot(
-              ax=ax3, color=["green", "red"], title="Residuals", grid=True)
+                ax=ax3, color=["green", "red"], title="Residuals", grid=True)
             ax3.set(xlabel=None)
             # residuals distribution
             dtf[["residuals", "error"]].plot(
-              ax=ax4, color=["green", "red"], kind='kde',
-              title="Residuals Distribution", grid=True)
+                ax=ax4, color=["green", "red"], kind='kde',
+                title="Residuals Distribution", grid=True)
             ax4.set(ylabel=None)
             plt.show()
             print("Training --> Residuals mean:", np.round(residuals_mean),
                   " | std:", np.round(residuals_std))
             print(
-              "Test --> Error mean:", np.round(error_mean),
-              " | std:", np.round(error_std),
-              " | mae:", np.round(mae), " | mape:", np.round(mape*100),
-              "%| mse:", np.round(mse), " | rmse:", np.round(rmse))
+                "Test --> Error mean:", np.round(error_mean),
+                " | std:", np.round(error_std),
+                " | mae:", np.round(mae), " | mape:", np.round(mape * 100),
+                "%| mse:", np.round(mse), " | rmse:", np.round(rmse))
 
         return dtf[[
-          "ts", "model", "residuals", "conf_int_low", "conf_int_up",
-          "forecast", "error", "pred_int_low", "pred_int_up"]]
+            "ts", "model", "residuals", "conf_int_low", "conf_int_up",
+            "forecast", "error", "pred_int_low", "pred_int_up"]]
 
     except Exception as e:
         print("--- got error ---")
@@ -261,7 +259,7 @@ def param_tuning_sarimax(data, m, max_order, information_criterion='aic'):
     of defined start_p, max_p, start_q, max_q ranges.
 
     If the seasonal optional is enabled(allowing SARIMAX over ARIMA),
-    it also seeks to identify the optimal P and Q hyper- parameters
+    it also seeks to identify the optimal P and Q hyperparameters
     after conducting the Canova-Hansen
     to determine the optimal order of seasonal differencing, D.
 
@@ -287,21 +285,21 @@ def param_tuning_sarimax(data, m, max_order, information_criterion='aic'):
     """
     if data.empty:
         raise ValueError("Input series must be not empty.")
-    elif not isinstance(m, (int)):
+    elif not isinstance(m, int):
         raise ValueError("m must be an integer.")
 
     best_model = pm.auto_arima(
-      data, exogenous=None,
-      seasonal=True, stationary=True,
-      m=m, information_criterion='aic',
-      max_order=max_order, max_p=2,
-      max_d=1, max_q=2, max_P=1, max_D=1,
-      max_Q=2, error_action='ignore')
+        data, exogenous=None,
+        seasonal=True, stationary=True,
+        m=m, information_criterion=information_criterion,
+        max_order=max_order, max_p=2,
+        max_d=1, max_q=2, max_P=1, max_D=1,
+        max_Q=2, error_action='ignore')
     return best_model
 
 
 def fit_sarimax(ts_train, order, seasonal_order, exog_train=None):
-    '''
+    """
     Fit SARIMAX (Seasonal ARIMA with External Regressors):
     y[t+1] = (c + a0*y[t] + a1*y[t-1] +...+ ap*y[t-p]) + (e[t] +
                   b1*e[t-1] + b2*e[t-2] +...+ bq*e[t-q]) + (B*X[t])
@@ -318,15 +316,15 @@ def fit_sarimax(ts_train, order, seasonal_order, exog_train=None):
 
     :return
     Model and dtf with the fitted values
-    '''
+    """
     # train
     if ts_train.empty:
         raise ValueError("Train series must be not empty.")
 
     model = smt.SARIMAX(
-      ts_train, order=order, seasonal_order=seasonal_order,
-      exog=exog_train, enforce_stationarity=False,
-      enforce_invertibility=False)
+        ts_train, order=order, seasonal_order=seasonal_order,
+        exog=exog_train, enforce_stationarity=False,
+        enforce_invertibility=False)
     model = model.fit()
     dtf_train = ts_train.to_frame(name="ts")
     dtf_train["model"] = model.fittedvalues
@@ -354,21 +352,21 @@ def test_sarimax(ts_train, ts_test, exog_test, p, model):
         raise ValueError("Train series must be not empty.")
     elif ts_test.empty:
         raise ValueError("Test series must be not empty.")
-    elif not isinstance(p, (int)):
+    elif not isinstance(p, int):
         raise ValueError("p must be an integer.")
 
     dtf_test = ts_test[:p].to_frame(name="ts")
 
     if exog_test is None:
         dtf_test["forecast"] = model.predict(
-          start=len(ts_train)+1,
-          end=len(ts_train)+len(ts_test[:(p)-1]),
-          exog=exog_test)
+            start=len(ts_train) + 1,
+            end=len(ts_train) + len(ts_test[:p - 1]),
+            exog=exog_test)
     else:
         dtf_test["forecast"] = model.predict(
-          start=len(ts_train)+1,
-          end=len(ts_train)+len(ts_test[:(p)-1]),
-          exog=exog_test[:p])
+            start=len(ts_train) + 1,
+            end=len(ts_train) + len(ts_test[:p - 1]),
+            exog=exog_test[:p])
     dtf_test = dtf_test.round()
     return dtf_test
 
@@ -457,11 +455,11 @@ def param_tuning_prophet(dtf_train, p, seasonality_mode, ts_test,
 
     holiday = pd.DataFrame([])
     for date, name in sorted(
-      holidays.Greece(years=[2019, 2020, 2021, 20222]).items()):
+            holidays.Greece(years=[2019, 2020, 2021, 20222]).items()):
         # pd.DatetimeIndex(holiday['ds']).year[-1] in place of 2021
         holiday = holiday.append(pd.DataFrame(
-          {'ds': date, 'holiday': "GR-Holidays"},
-          index=[0]), ignore_index=True)
+            {'ds': date, 'holiday': "GR-Holidays"},
+            index=[0]), ignore_index=True)
     holiday['ds'] = pd.to_datetime(holiday['ds'],
                                    format='%Y-%m-%d', errors='ignore')
 
@@ -474,45 +472,45 @@ def param_tuning_prophet(dtf_train, p, seasonality_mode, ts_test,
 
     model_parameters = pd.DataFrame(columns=['MAPE', 'Parameters'])
 
-    for p in grid:
-        test = pd.DataFrame()
+    for g in grid:
+
         random.seed(0)
         train_model = Prophet(
-          changepoint_prior_scale=p['changepoint_prior_scale'],
-          holidays_prior_scale=p['holidays_prior_scale'],
-          n_changepoints=p['n_changepoints'],
-          seasonality_mode=p['seasonality_mode'],
-          weekly_seasonality=True,
-          daily_seasonality=True,
-          yearly_seasonality=True,
-          holidays=holiday,
-          interval_width=0.95)
+            changepoint_prior_scale=g['changepoint_prior_scale'],
+            holidays_prior_scale=g['holidays_prior_scale'],
+            n_changepoints=g['n_changepoints'],
+            seasonality_mode=g['seasonality_mode'],
+            weekly_seasonality=True,
+            daily_seasonality=True,
+            yearly_seasonality=True,
+            holidays=holiday,
+            interval_width=0.95)
 
         train_model.add_country_holidays(country_name='GR')
         test = dtf_train
         test.columns = ['ds', 'y']
         train_model.fit(test)
         train_forecast = train_model.make_future_dataframe(
-          periods=p, freq='15T', include_history=False)
+            periods=p, freq='15T', include_history=False)
         train_forecast = train_model.predict(train_forecast)
         test = train_forecast[['ds', 'yhat']]
 
-        Actual = ts_test.iloc[:p, ]
-        MAPE = mean_absolute_percentage_error(Actual, abs(test['yhat']))
+        actual = ts_test.iloc[:p, ]
+        mape = mean_absolute_percentage_error(actual, abs(test['yhat']))
 
-        print('Mean Absolute Percentage Error(MAPE)--------', MAPE)
+        print('Mean Absolute Percentage Error(MAPE)--------', mape)
         model_parameters = model_parameters.append(
-          {'MAPE': MAPE, 'Parameters': p}, ignore_index=True)
+            {'MAPE': mape, 'Parameters': p}, ignore_index=True)
 
     optimals = model_parameters.groupby('Data', as_index=False).max()
     optimals = optimals.merge(
-      model_parameters, on=['MAPE', 'Data'], how='left')
+        model_parameters, on=['MAPE', 'Data'], how='left')
 
     return optimals
 
 
-def fit_prophet(dtf_train, lst_exog, freq):
-    '''
+def fit_prophet(dtf_train):
+    """
     Fits prophet on the Data.
     Prophet makes use of a decomposable time series
     model with three main model components:
@@ -532,39 +530,37 @@ def fit_prophet(dtf_train, lst_exog, freq):
         :param dtf_train: pandas Dataframe with columns 'ds' (dates),
                  values, 'cap' (capacity if growth="logistic"),
                  other additional regressor.
-        :param lst_exog: list - names of variables
-        :param freq: str - "D" daily, "M" monthly, "Y" annual, "MS"
-                           monthly start ...
+
     :return
         trained model.
-    '''
+    """
 
     if dtf_train.empty:
         raise ValueError("Input series must be not empty.")
     subdf = dtf_train.dropna()
-    subdf.columns['ds', 'y']
+    subdf = subdf.columns['ds', 'y']
 
     # Adding the holidays as a parameter:
     holiday = pd.DataFrame([])
     for date, name in sorted(holidays.Greece(
-      years=list(
-        range(
-          pd.DatetimeIndex(dtf_train['ds']).year[0],
-          pd.DatetimeIndex(dtf_train['ds']).year[-1] + 1))).items()):
+            years=list(
+                range(
+                    pd.DatetimeIndex(dtf_train['ds']).year[0],
+                    pd.DatetimeIndex(dtf_train['ds']).year[-1] + 1))).items()):
         holiday = holiday.append(pd.DataFrame(
-          {'ds': date, 'holiday': "GR-Holidays"},
-          index=[0]), ignore_index=True)
+            {'ds': date, 'holiday': "GR-Holidays"},
+            index=[0]), ignore_index=True)
     holiday['ds'] = pd.to_datetime(
-      holiday['ds'], format='%Y-%m-%d', errors='ignore')
+        holiday['ds'], format='%Y-%m-%d', errors='ignore')
 
     model = Prophet(
-      growth="linear",
-      n_changepoints=100,
-      yearly_seasonality="auto",
-      weekly_seasonality="auto",
-      daily_seasonality=True,
-      holidays=holiday,
-      seasonality_mode='multiplicative')
+        growth="linear",
+        n_changepoints=100,
+        yearly_seasonality="auto",
+        weekly_seasonality="auto",
+        daily_seasonality=True,
+        holidays=holiday,
+        seasonality_mode='multiplicative')
 
     model.add_country_holidays(country_name='GR')
     model = model.fit(subdf)
@@ -592,19 +588,19 @@ def test_prophet(dtf_test, model, freq, p):
 
     if dtf_test.empty:
         raise ValueError("Test series must be not empty.")
-    elif not isinstance(p, (int)):
+    elif not isinstance(p, int):
         raise ValueError("p must be an integer.")
 
     dtf_prophet = model.make_future_dataframe(
-      periods=p, freq=freq, include_history=True)
+        periods=p, freq=freq, include_history=True)
 
     dtf_prophet = model.predict(dtf_prophet)
     dtf_prophet = dtf_prophet.round()
     dtf_forecast = dtf_test.merge(
-      dtf_prophet[["ds", "yhat"]],
-      how="left").rename(
-      columns={'yhat': 'forecast',
-               'y': 'ts'}).set_index("ds")
+        dtf_prophet[["ds", "yhat"]],
+        how="left").rename(
+        columns={'yhat': 'forecast',
+                 'y': 'ts'}).set_index("ds")
 
     return dtf_forecast
 
