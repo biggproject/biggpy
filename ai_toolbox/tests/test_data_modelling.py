@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import unittest
+import numpy as np
 
 from numpy.testing import assert_array_equal
 from sklearn import svm
@@ -225,6 +226,27 @@ class TestDataModelling(unittest.TestCase):
                           scoring=['precision', 'recall', 'accuracy'],
                           compare_with='not_in_scoring'
                           )
+
+    def test_blocking_time_series_split_returns_expected_result(self):
+        """ Test that BlockingTimeSeriesSplit returns the expected results """
+
+        X = np.linspace(start=(1, 2), stop=(10, 20), num=13, dtype=int)
+        splitter = data_modelling.BlockingTimeSeriesSplit(n_splits=3, gap=1)
+        indices = [(train_index.tolist(), test_index.tolist()) for train_index, test_index in splitter.split(X)]
+        self.assertEqual(indices, [([0, 1], [3, 4]), ([5, 6], [8]), ([9, 10], [12])])
+
+    def test_blocking_time_series_split_raises_if_nsplits_lower_than_2(self):
+        """ Test that BlockingTimeSeriesSplit raises in case n_splits is lower than 2 """
+
+        self.assertRaises(ValueError, data_modelling.BlockingTimeSeriesSplit, 1, 0)
+
+    def test_blocking_time_series_split_raises_if_nsplits_greater_than_nsamples(self):
+        """ Test that BlockingTimeSeriesSplit raises in case n_splits is greater than n_samples """
+
+        X = np.linspace(start=(1, 2), stop=(10, 20), num=13, dtype=int)
+        splitter = data_modelling.BlockingTimeSeriesSplit(n_splits=14, gap=0)
+        with self.assertRaises(ValueError):
+            next(splitter.split(X))
 
     @classmethod
     def tearDownClass(cls):

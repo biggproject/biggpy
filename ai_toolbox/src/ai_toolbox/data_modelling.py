@@ -3,7 +3,7 @@
 from abc import ABC
 from os.path import isabs, splitext, dirname, isdir
 
-from numpy import arange, mean, std
+from numpy import arange, mean, std, full
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import get_scorer
@@ -14,23 +14,40 @@ from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 
 
 class BlockingTimeSeriesSplit(BaseCrossValidator, ABC):
-    def __init__(self, n_splits):
+    """
+    This class is a splitter performing a special type of time series partitioning
+    to be used in the cross-validation framework. Differently from TimeSeriesSplit,
+    this method will generate disjoint partitions of the dataset in each iteration.
+    """
+
+    def __init__(self, n_splits=5, gap=0):
+        if n_splits <= 1:
+            raise ValueError(
+                "k-fold cross-validation requires at least one"
+                " train/test split by setting n_splits=2 or more,"
+                " got n_splits={0}.".format(n_splits))
         self.n_splits = n_splits
+        self.gap = gap
 
     def get_n_splits(self, X=None, y=None, groups=None):
         return self.n_splits
 
     def split(self, X, y=None, groups=None):
         n_samples = len(X)
-        k_fold_size = n_samples // self.n_splits
+        if self.n_splits > n_samples:
+            raise ValueError(
+                ("Cannot have number of splits n_splits={0} greater"
+                 " than the number of samples: n_samples={1}.")
+                .format(self.n_splits, n_samples))
         indices = arange(n_samples)
-
-        margin = 0
+        fold_sizes = full(self.n_splits, n_samples // self.n_splits, dtype=int)
+        fold_sizes[:n_samples % self.n_splits] += 1
+        stop = 0
         for i in range(self.n_splits):
-            start = i * k_fold_size
-            stop = start + k_fold_size
+            start = stop
+            stop = start + (fold_sizes[i])
             mid = int(0.5 * (stop - start)) + start
-            yield indices[start: mid], indices[mid + margin: stop]
+            yield indices[start: mid], indices[mid + self.gap: stop]
 
 
 class PolynomialRegression(BaseEstimator, RegressorMixin):

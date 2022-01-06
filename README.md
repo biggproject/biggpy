@@ -8,6 +8,10 @@ machine learning pipeline in the context of WP5 and related business cases and u
 For the language-agnostic documentation, please refer to: 
 https://github.com/biggproject/biggdocs
 
+## Examples
+Some examples of usage are available as Jupyter notebooks in the directory "notebooks":
+https://github.com/biggproject/biggpy/tree/main/ai_toolbox/notebooks
+
 ## License
 This library depends on other popular open-source libraries in the AI field, from which it will retain the licenses.
 This is a semi-exhaustive list of the dependencies and their licenses:
