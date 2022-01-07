@@ -195,6 +195,38 @@ def weekly_profile_detection(data, exclude_days=None):
     return df_group
 
 
+def add_lag_components(data, columns=None, max_lag=1):
+    """
+    Returns a DataFrame with the lag components of the columns as new columns.
+    If the argument 'columns' is not None, only the lag components of the
+    specified columns will be generated.
+
+    :param data: DataFrame with at least one column.
+    :param columns: List of strings specifying the column to use.
+        Must be a subset of the input data columns.
+    :param max_lag: Maximum lag to be generated.
+    :return: New DataFrame with the lag components included as new columns
+    """
+
+    if data.empty or not isinstance(data, pd.DataFrame):
+        raise ValueError("Input data must be not empty and must be a pandas DataFrame.")
+
+    if columns is not None:
+        if not set(columns).issubset(data.columns.to_list()):
+            raise ValueError("Argument 'columns' must be a subset of the input DataFrame columns.")
+        return data.assign(**{
+            '{}(-{})'.format(col, lag): data[col].shift(lag)
+            for lag in range(1, max_lag + 1)
+            for col in columns
+        })
+
+    return data.assign(**{
+        '{}(-{})'.format(col, lag): data[col].shift(lag)
+        for lag in range(1, max_lag + 1)
+        for col in data
+    })
+
+
 if __name__ == '__main__':
     """
     This module is not supposed to run as a stand-alone module.

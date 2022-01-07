@@ -7,7 +7,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytz
-from pandas.testing import assert_frame_equal
+from pandas.testing import assert_frame_equal, assert_series_equal
 
 from ai_toolbox import data_transformation
 
@@ -235,6 +235,37 @@ class TestDataTransformation(unittest.TestCase):
             df_result_exclude,
             check_exact=False,
             check_dtype=False)
+
+    def test_add_lag_components_raises_if_empty_dataframe(self):
+        """ Test that add_lag_components raises ValueError in case of empty DataFrame """
+
+        self.assertRaises(ValueError, data_transformation.add_lag_components, pd.DataFrame(data=[]))
+
+    def test_add_lag_components_raises_if_not_dataframe(self):
+        """ Test that add_lag_components raises ValueError in case data is not a DataFrame """
+
+        self.assertRaises(ValueError, data_transformation.add_lag_components, pd.Series(data=[2]))
+
+    def test_add_lag_components_raises_if_columns_not_subset_of_dataframe_columns(self):
+        """
+        Test that add_lag_components raises ValueError in case the specified columns are
+        not a subset of the input Dataframe columns
+        """
+
+        self.assertRaises(
+            ValueError, data_transformation.add_lag_components, self.df_two_columns, columns=['n1', 'wrong_column'])
+
+    def test_add_lag_components_returns_expected_result(self):
+        """ Test that add_lag_components returns expected result """
+
+        df_with_lags = data_transformation.add_lag_components(self.df_two_columns, columns=['n1'])
+        self.assertEqual(df_with_lags.columns.to_list(), ['n1', 'n2', 'n1(-1)'])
+        assert_series_equal(
+            df_with_lags['n1(-1)'],
+            self.df_two_columns['n1'].shift(1),
+            check_exact=False,
+            check_dtype=False,
+            check_names=False)
 
     @classmethod
     def tearDownClass(cls):
