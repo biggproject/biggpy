@@ -21,18 +21,41 @@ class BlockingTimeSeriesSplit(BaseCrossValidator, ABC):
     """
 
     def __init__(self, n_splits=5, gap=0):
+        """
+        Constructor of the splitter.
+
+        :param n_splits: Number of splits. Must be at least 2. Default value is 5.
+        :param gap: Number of samples to exclude from the end of each train set before the test set.
+            Default value is 0.
+        """
         if n_splits <= 1:
             raise ValueError(
-                "k-fold cross-validation requires at least one"
+                "BlockingTimeSeriesSplit requires at least one"
                 " train/test split by setting n_splits=2 or more,"
                 " got n_splits={0}.".format(n_splits))
         self.n_splits = n_splits
         self.gap = gap
 
     def get_n_splits(self, X=None, y=None, groups=None):
+        """
+        Returns the number of splits.
+
+        :param X: X data
+        :param y: y data
+        :param groups: Left for backward compatibility
+        :return: number of split
+        """
         return self.n_splits
 
     def split(self, X, y=None, groups=None):
+        """
+        Yields indices to split data into training and test set.
+
+        :param X: X data
+        :param y: y data
+        :param groups: Left for backward compatibility
+        :return: Yields the split indices
+        """
         n_samples = len(X)
         if self.n_splits > n_samples:
             raise ValueError(
