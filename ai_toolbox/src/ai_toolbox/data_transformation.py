@@ -227,6 +227,41 @@ def add_lag_components(data, columns=None, max_lag=1):
     })
 
 
+def add_calendar_components(data, calendar_components=None, drop_constant_columns=True):
+    """
+    Add calendar components year, quarter, month, week, day, hour
+    to the input DataFrame.
+
+    :param data: input DataFrame with a DateTimeIndex and at least one column.
+    :param calendar_components: List of strings, specifying the calendar components you want to add in
+        ["year", "quarter", "month", "week", "day", "hour"].
+    :param drop_constant_columns: If True, drops constant calendar components.
+    :return: new DataFrame with the added calendar components.
+    """
+
+    if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
+        raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
+
+    default_components = ["year", "quarter", "month", "week", "day", "hour"]
+
+    if calendar_components is not None:
+        if not set(calendar_components).issubset(default_components):
+            raise ValueError("Argument 'calendar_components' must be a subset of "
+                             "['year', 'quarter', 'month', 'week', 'day', 'hour'].")
+    else:
+        calendar_components = default_components
+
+    df_new = data.assign(**{
+        '{}'.format(component): getattr(data.index, component)
+        for component in calendar_components
+    })
+
+    if drop_constant_columns:
+        df_new = df_new.loc[:, (df_new[calendar_components] != df_new.iloc[0]).any()]
+
+    return df_new
+
+
 if __name__ == '__main__':
     """
     This module is not supposed to run as a stand-alone module.

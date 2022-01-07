@@ -267,6 +267,42 @@ class TestDataTransformation(unittest.TestCase):
             check_dtype=False,
             check_names=False)
 
+    def test_add_calendar_components_raises_if_empty_dataframe(self):
+        """ Test that add_calendar_components raises ValueError in case of empty DataFrame """
+
+        self.assertRaises(ValueError, data_transformation.add_calendar_components, pd.DataFrame(data=[]))
+
+    def test_add_calendar_components_raises_if_not_dataframe(self):
+        """ Test that add_calendar_components raises ValueError in case data is not a DataFrame """
+
+        self.assertRaises(ValueError, data_transformation.add_calendar_components, pd.Series(data=[2]))
+
+    def test_add_calendar_components_raises_if_calendar_components_not_subset_of_dataframe_columns(self):
+        """
+        Test that add_calendar_components raises ValueError in case the specified calendar components are
+        not a subset of the input Dataframe columns
+        """
+
+        self.assertRaises(
+            ValueError,
+            data_transformation.add_calendar_components,
+            self.df_two_columns,
+            calendar_components=['year', 'date'])
+
+    def test_add_calendar_components_returns_expected_result(self):
+        """ Test that add_calendar_components returns expected result """
+
+        df_with_calendar = data_transformation.add_calendar_components(
+            self.df_two_columns, calendar_components=['year', 'month', 'day'], drop_constant_columns=True)
+        self.assertEqual(df_with_calendar.columns.to_list(), ['n1', 'n2', 'month', 'day'])
+
+    def test_add_calendar_components_returns_expected_result_if_drop_constant_columns_is_false(self):
+        """ Test that add_calendar_components returns expected result if drop_constant_columns is False """
+
+        df_with_calendar = data_transformation.add_calendar_components(
+            self.df_two_columns, calendar_components=['year', 'month', 'day'], drop_constant_columns=False)
+        self.assertEqual(df_with_calendar.columns.to_list(), ['n1', 'n2', 'year', 'month', 'day'])
+
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()
