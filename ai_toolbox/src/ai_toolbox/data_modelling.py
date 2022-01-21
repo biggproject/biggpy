@@ -11,6 +11,10 @@ from sklearn.model_selection import GridSearchCV, BaseCrossValidator, cross_vali
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
+from sklearn.preprocessing import StandardScaler
+
+# Needed to add custom performance metrics to the sklearn scorers
+from ai_toolbox import perfomance_metrics
 
 
 class BlockingTimeSeriesSplit(BaseCrossValidator, ABC):
@@ -477,3 +481,40 @@ if __name__ == '__main__':
     This module is not supposed to run as a stand-alone module.
     This part below is only for testing purposes. 
     """
+
+    import pandas as pd
+
+    from sklearn.datasets import load_diabetes
+    from sklearn.model_selection import KFold
+    from time import time
+
+    start_time = time()
+    df = load_diabetes(as_frame=True).frame
+    df_X = df.iloc[:, :-1]
+    df_y = df.target
+
+    cv_splitter_outer = KFold(n_splits=5, shuffle=True, random_state=1)
+    cv_splitter_inner = KFold(n_splits=3, shuffle=True, random_state=1)
+    grid = {
+        PolynomialRegression(standard_scaler=True): {
+            'degree': list(range(1, 5))
+        }
+    }
+    results = identify_best_model(
+        X_data=df_X,
+        y_data=df_y,
+        model_families_parameter_grid=grid,
+        cv_inner=cv_splitter_inner,
+        cv_outer=cv_splitter_outer,
+        scoring=['mean_bias_error', 'normalized_mean_bias_error', 'r2', 'neg_root_mean_squared_error'],
+        compare_with='r2'
+    )
+
+    print("Best model: {}".format(results[0]))
+    print("Best parameters: {}".format(results[1]))
+    print("Mean score: {}".format(results[2]))
+    print("Std score: {}".format(results[3]))
+    print("{}".format(pd.DataFrame.from_dict(results[4]).to_markdown()))
+    print("Evaluation results: {}".format(results[5]))
+
+    print("Time to identify best model: {} seconds.".format(time() - start_time))
