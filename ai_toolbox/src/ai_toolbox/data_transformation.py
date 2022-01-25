@@ -6,6 +6,10 @@ from datetime import datetime
 import pandas as pd
 import pytz
 from pandas.tseries.frequencies import to_offset
+from sklearn.compose import ColumnTransformer
+from numpy import pi, sin, cos
+from sklearn.preprocessing import FunctionTransformer
+from itertools import chain
 
 from ai_toolbox.data_preparation import detect_time_step
 
@@ -242,12 +246,11 @@ def add_calendar_components(data, calendar_components=None, drop_constant_column
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    default_components = ["year", "quarter", "month", "week", "day", "hour"]
+    default_components = ["year", "quarter", "month", "week", "weekday", "hour", "day"]
 
     if calendar_components is not None:
         if not set(calendar_components).issubset(default_components):
-            raise ValueError("Argument 'calendar_components' must be a subset of "
-                             "['year', 'quarter', 'month', 'week', 'day', 'hour'].")
+            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(default_components))
     else:
         calendar_components = default_components
 
@@ -260,6 +263,62 @@ def add_calendar_components(data, calendar_components=None, drop_constant_column
         df_new = df_new.loc[:, (df_new[calendar_components] != df_new.iloc[0]).any()]
 
     return df_new
+
+
+def trigonometric_encode_calendar_components(data, calendar_components=None, remainder='passthrough', drop=True):
+    """
+    This function returns a sklearn transformer to encode all the calendar components
+    added to a Dataframe into trigonometric cyclic components, sin and cosine. This type
+    of encoding is beneficial for some models like LinearRegression, PolynomialRegression,
+    SVM, etc. but generally not for DecisionTree or ensemble methods like Random Forest.
+
+    :param data: DataFrame containing the calendar components added with
+        the function add_calendar_components.
+    :param calendar_components: Calendar components to be transformed to cyclic sin and
+        cosine components. Default is None, which means to transform all the components.
+    :param remainder: {‘drop’, ‘passthrough’} or estimator, default=‘passthrough’.
+        By default, only the specified calendar components are transformed and combined
+        in the output, and the non-specified columns are passed through.
+        This subset of columns is concatenated with the output of the transformers.
+        By setting remainder to be an estimator, for example a scaling transformer like
+        StandardScaler, the remaining non-specified columns will use the remainder estimator.
+    :param drop: Whether to drop or not the original calendar components.
+    :return: Transformer to be used in a sklearn Pipeline to perform the encoding.
+    """
+
+    def sin_transformer(period):
+        return FunctionTransformer(lambda x: sin(x / period * 2 * pi))
+
+    def cos_transformer(period):
+        return FunctionTransformer(lambda x: cos(x / period * 2 * pi))
+
+    if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
+        raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
+
+    default_components = ["year", "quarter", "month", "week", "weekday", "hour", "day"]
+
+    if calendar_components is not None:
+        if not set(calendar_components).issubset(default_components):
+            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(default_components))
+    else:
+        calendar_components = default_components
+
+    # Create list of transformers for each column
+    transformers = list(
+        chain.from_iterable(
+            (
+                ("{}_sin".format(component), sin_transformer(data[component].nunique()), [component]),
+                ("{}_cos".format(component), cos_transformer(data[component].nunique()), [component])
+            )
+            for component in calendar_components)
+    )
+    # Append to the list a transformer to drop the original components after the transformation
+    if drop:
+        transformers.append(('drop', 'drop', calendar_components))
+
+    return ColumnTransformer(
+        transformers=transformers,
+        remainder=remainder)
 
 
 if __name__ == '__main__':
