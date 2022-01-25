@@ -351,6 +351,18 @@ def identify_best_model(X_data, y_data, model_families_parameter_grid, cv_outer,
             model family and each scoring function specified.
     """
 
+    def stringify(estimator):
+        """
+        Converts the name of an estimator to string.
+        In case the estimator is a Pipeline, this
+        function will return only the string
+        representation of the last step.
+        """
+        if isinstance(estimator, Pipeline):
+            return str(estimator.steps[-1][1])
+        else:
+            return str(estimator)
+
     if not all(isinstance(i, BaseCrossValidator) for i in [cv_outer, cv_inner]):
         raise TypeError("Parameters 'cv_outer' and 'cv_inner' must be cross validator objects.")
     if scoring is not None and not isinstance(scoring, (str, list, tuple)):
@@ -404,7 +416,7 @@ def identify_best_model(X_data, y_data, model_families_parameter_grid, cv_outer,
         ).fit(X=X_data, y=y_data)
 
     # Stringify double_cv_results keys before returning it
-    double_cv_results = {str(key): value for key, value in double_cv_results.items()}
+    double_cv_results = {stringify(key): value for key, value in double_cv_results.items()}
 
     return search.best_estimator_, search.best_params_, mean_score, std_score, search.cv_results_, double_cv_results
 
