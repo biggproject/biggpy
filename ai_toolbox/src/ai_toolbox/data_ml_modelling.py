@@ -253,13 +253,20 @@ def param_tuning_sarimax(data, m, max_order, information_criterion='aic'):
     elif not isinstance(m, int):
         raise ValueError("m must be an integer.")
 
-    best_model = pm.auto_arima(
-        data, exogenous=None,
-        seasonal=True, stationary=True,
-        m=m, information_criterion=information_criterion,
-        max_order=max_order, max_p=2,
-        max_d=1, max_q=2, max_P=1, max_D=1,
-        max_Q=2, error_action='ignore')
+    best_model = pm.auto_arima(data, start_p=1, start_q=1, start_P=1, start_Q=1,
+                               test='adf',  # use adftest to find optimal 'd'
+                               max_p=max_order, max_q=max_order,  # maximum p and q
+                               max_P=max_order, max_D=1,  # maximum P and D and Q
+                               max_Q=max_order,
+                               m=m,  # frequency of series # m=12 Monthly m=24 Hourly
+                               d=None,  # let model determine 'd'
+                               seasonal=False,  # No Seasonality
+                               trace=True,
+                               exogenous=None,
+                               error_action='ignore',
+                               suppress_warnings=True,
+                               stepwise=True)
+
     return best_model
 
 
