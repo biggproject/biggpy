@@ -260,7 +260,7 @@ def param_tuning_sarimax(data, m, max_order, information_criterion='aic'):
                                max_Q=max_order,
                                m=m,  # frequency of series # m=12 Monthly m=24 Hourly
                                d=None,  # let model determine 'd'
-                               seasonal=False,  # No Seasonality
+                               seasonal=True,  # No Seasonality
                                trace=True,
                                exogenous=None,
                                error_action='ignore',
