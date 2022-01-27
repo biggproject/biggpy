@@ -615,7 +615,7 @@ def prepare_pycaret(ts):
     return data,y
 
 
-def predict_pycaret(data, y):
+def predict_pycaret(data, y, eval = "R2"):
     """
     This function will select the best model runned by pycared based on their performance
     and it will make predictions with this selected model.
@@ -632,7 +632,7 @@ def predict_pycaret(data, y):
         raise ValueError("Data series must not be empty.")
     elif not y.empty:
         raise ValueError("y must not be empty.")
-    best_model = compare_models(errors="raise", sort='R2')
+    best_model = compare_models(errors="raise", sort=eval')
     data.drop('value', axis=1, inplace=True)
     prediction_holdout = predict_model(best_model, data)
     prediction_holdout = prediction_holdout.join(y)
