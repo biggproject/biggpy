@@ -559,7 +559,7 @@ def test_prophet(dtf_test, model, freq, p):
     """
 
     if dtf_test.empty:
-        raise ValueError("Test series must be not empty.")
+        raise ValueError("Test series must not be empty.")
     elif not isinstance(p, int):
         raise ValueError("p must be an integer.")
 
@@ -577,7 +577,23 @@ def test_prophet(dtf_test, model, freq, p):
     return dtf_forecast
 
 def prepare_pycaret(ts):
+    """
+    This function adapt the TimeSerie to add exogeneous variables (year-month-day-hour) 
+    for them to be available for pycaret models. 
+    The goal of the caret package is to automate the major steps for 
+    evaluating and comparing machine learning algorithms for classification and regression.
 
+    :parameter
+        :param ts: pandas Dataframe containing the training data
+                        
+    :return
+        y :DataFrame containing the true values
+        data : DataFrame containing the true values and the exogeneous ones
+    
+    """
+    if ts.empty:
+        raise ValueError("ts series must be not empty.")
+        
     ts['MA12'] = ts['value'].rolling(12).mean()
     data=ts
     data= data.reset_index()
@@ -600,6 +616,22 @@ def prepare_pycaret(ts):
 
 
 def predict_pycaret(data, y):
+    """
+    This function will select the best model runned by pycared based on their performance
+    and it will make predictions with this selected model.
+    
+    :parameter
+        param y :DataFrame containing the true values
+        param data : DataFrame containing the true values and the exogeneous ones
+                        
+    :return
+       prediction_holdout: DataFrame containing the predictions made by pycaret's best model
+    """
+    
+    if data.empty:
+        raise ValueError("Data series must not be empty.")
+    elif not y.empty:
+        raise ValueError("y must not be empty.")
     best_model = compare_models(errors="raise", sort='R2')
     data.drop('value', axis=1, inplace=True)
     prediction_holdout = predict_model(best_model, data)
@@ -609,14 +641,17 @@ def predict_pycaret(data, y):
     prediction_holdout['date'] = pd.to_datetime(prediction_holdout['date'])
     prediction_holdout = prediction_holdout.set_index('date')
     prediction_holdout = prediction_holdout.resample('1H').mean().fillna(0)
+    
 
     output_notebook(INLINE)
     p = figure(x_axis_type="datetime", x_axis_label='Dates', y_axis_label='Consomation (Wh)')
     data_source = ColumnDataSource(prediction_holdout)
     p.line(x='date', y='value', source=data_source, legend_label='Value')
     p.line(x='date', y='Label', source=data_source, color='red', legend_label='Pred')
-
+    
     show(p)
+    
+    return(prediction_holdout)
 
 if __name__ == '__main__':
     """
