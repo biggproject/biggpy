@@ -253,13 +253,20 @@ def param_tuning_sarimax(data, m, max_order, information_criterion='aic'):
     elif not isinstance(m, int):
         raise ValueError("m must be an integer.")
 
-    best_model = pm.auto_arima(
-        data, exogenous=None,
-        seasonal=True, stationary=True,
-        m=m, information_criterion=information_criterion,
-        max_order=max_order, max_p=2,
-        max_d=1, max_q=2, max_P=1, max_D=1,
-        max_Q=2, error_action='ignore')
+    best_model = pm.auto_arima(data, start_p=1, start_q=1, start_P=1, start_Q=1,
+                               test='adf',  # use adftest to find optimal 'd'
+                               max_p=max_order, max_q=max_order,  # maximum p and q
+                               max_P=max_order, max_D=1,  # maximum P and D and Q
+                               max_Q=max_order,
+                               m=m,  # frequency of series # m=12 Monthly m=24 Hourly
+                               d=None,  # let model determine 'd'
+                               seasonal=True,  # No Seasonality
+                               trace=True,
+                               exogenous=None,
+                               error_action='ignore',
+                               suppress_warnings=True,
+                               stepwise=True)
+
     return best_model
 
 
@@ -569,6 +576,47 @@ def test_prophet(dtf_test, model, freq, p):
 
     return dtf_forecast
 
+def prepare_pycaret(ts):
+
+    ts['MA12'] = ts['value'].rolling(12).mean()
+    data=ts
+    data= data.reset_index()
+    data['Year']=data['time'].dt.year
+    data['Month']=data['time'].dt.month
+    data['Day']=data['time'].dt.day
+    data['Hour']=data['time'].dt.hour
+    data['Series']=np.arange(1,len(data)+1)
+
+    data.drop(['time','MA12', 'Series'],axis=1,inplace=True)
+    data=data[['Year', 'Month','Day','Hour','value']]
+    data.value= data.value.astype(int)
+    data = pd.DataFrame(data = data)
+
+
+    xs=data.drop('value',axis=1)
+    y=data['value']
+
+    return data,y
+
+
+def predict_pycaret(data, y):
+    best_model = compare_models(errors="raise", sort='R2')
+    data.drop('value', axis=1, inplace=True)
+    prediction_holdout = predict_model(best_model, data)
+    prediction_holdout = prediction_holdout.join(y)
+    prediction_holdout['date'] = pd.to_datetime(prediction_holdout[['Year', 'Month', 'Day', 'Hour']]).dt.strftime(
+        '%Y%m%d %H:%M')
+    prediction_holdout['date'] = pd.to_datetime(prediction_holdout['date'])
+    prediction_holdout = prediction_holdout.set_index('date')
+    prediction_holdout = prediction_holdout.resample('1H').mean().fillna(0)
+
+    output_notebook(INLINE)
+    p = figure(x_axis_type="datetime", x_axis_label='Dates', y_axis_label='Consomation (Wh)')
+    data_source = ColumnDataSource(prediction_holdout)
+    p.line(x='date', y='value', source=data_source, legend_label='Value')
+    p.line(x='date', y='Label', source=data_source, color='red', legend_label='Pred')
+
+    show(p)
 
 if __name__ == '__main__':
     """
