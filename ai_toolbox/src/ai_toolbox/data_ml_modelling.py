@@ -576,6 +576,47 @@ def test_prophet(dtf_test, model, freq, p):
 
     return dtf_forecast
 
+def prepare_pycaret(ts):
+
+    ts['MA12'] = ts['value'].rolling(12).mean()
+    data=ts
+    data= data.reset_index()
+    data['Year']=data['time'].dt.year
+    data['Month']=data['time'].dt.month
+    data['Day']=data['time'].dt.day
+    data['Hour']=data['time'].dt.hour
+    data['Series']=np.arange(1,len(data)+1)
+
+    data.drop(['time','MA12', 'Series'],axis=1,inplace=True)
+    data=data[['Year', 'Month','Day','Hour','value']]
+    data.value= data.value.astype(int)
+    data = pd.DataFrame(data = data)
+
+
+    xs=data.drop('value',axis=1)
+    y=data['value']
+
+    return data,y
+
+
+def predict_pycaret(data, y):
+    best_model = compare_models(errors="raise", sort='R2')
+    data.drop('value', axis=1, inplace=True)
+    prediction_holdout = predict_model(best_model, data)
+    prediction_holdout = prediction_holdout.join(y)
+    prediction_holdout['date'] = pd.to_datetime(prediction_holdout[['Year', 'Month', 'Day', 'Hour']]).dt.strftime(
+        '%Y%m%d %H:%M')
+    prediction_holdout['date'] = pd.to_datetime(prediction_holdout['date'])
+    prediction_holdout = prediction_holdout.set_index('date')
+    prediction_holdout = prediction_holdout.resample('1H').mean().fillna(0)
+
+    output_notebook(INLINE)
+    p = figure(x_axis_type="datetime", x_axis_label='Dates', y_axis_label='Consomation (Wh)')
+    data_source = ColumnDataSource(prediction_holdout)
+    p.line(x='date', y='value', source=data_source, legend_label='Value')
+    p.line(x='date', y='Label', source=data_source, color='red', legend_label='Pred')
+
+    show(p)
 
 if __name__ == '__main__':
     """
