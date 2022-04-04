@@ -11,9 +11,8 @@ from sklearn.model_selection import GridSearchCV, BaseCrossValidator, cross_vali
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
-from sklearn.preprocessing import StandardScaler
 
-# Needed to add custom performance metrics to the sklearn scorers
+# Do NOT delete the import below, it is needed to add custom performance metrics to the sklearn scorers
 from ai_toolbox import perfomance_metrics
 
 
@@ -508,7 +507,7 @@ if __name__ == '__main__':
     cv_splitter_outer = KFold(n_splits=5, shuffle=True, random_state=1)
     cv_splitter_inner = KFold(n_splits=3, shuffle=True, random_state=1)
     grid = {
-        PolynomialRegression(standard_scaler=True): {
+        PolynomialRegression(): {
             'degree': list(range(1, 5))
         }
     }
@@ -518,7 +517,7 @@ if __name__ == '__main__':
         model_families_parameter_grid=grid,
         cv_inner=cv_splitter_inner,
         cv_outer=cv_splitter_outer,
-        scoring=['mean_bias_error', 'normalized_mean_bias_error', 'r2', 'neg_root_mean_squared_error'],
+        scoring=['mean_bias_error', 'normalized_mean_bias_error', 'r2', 'neg_root_mean_squared_error', 'cv_rmse'],
         compare_with='r2'
     )
 
