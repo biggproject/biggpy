@@ -2,15 +2,14 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-import numpy as np
 
+import numpy as np
+from ai_toolbox import data_modelling
 from numpy.testing import assert_array_equal
 from sklearn import svm
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import KFold
 from sklearn.utils.validation import NotFittedError
-
-from ai_toolbox import data_modelling
 
 
 class TestDataModelling(unittest.TestCase):
