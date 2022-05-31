@@ -7,9 +7,8 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytz
-from pandas.testing import assert_frame_equal, assert_series_equal
-
 from ai_toolbox import data_transformation
+from pandas.testing import assert_frame_equal, assert_series_equal
 
 
 class TestDataTransformation(unittest.TestCase):
@@ -61,7 +60,7 @@ class TestDataTransformation(unittest.TestCase):
             index_col=0)
 
         # Generate regular time series (dataframe) with 2 columns
-        idx = pd.date_range(start='2021/10/01', end='2021/11/01', tz=pytz.utc, freq='10T')
+        idx = pd.date_range(start='2021/10/01', end='2021/10/31', tz=pytz.utc, freq='10T')
         cls.df_two_columns = pd.DataFrame(
             data=np.random.randint(0, 100, size=(len(idx), 2)),
             index=idx,
@@ -293,15 +292,51 @@ class TestDataTransformation(unittest.TestCase):
         """ Test that add_calendar_components returns expected result """
 
         df_with_calendar = data_transformation.add_calendar_components(
-            self.df_two_columns, calendar_components=['year', 'month', 'day'], drop_constant_columns=True)
-        self.assertEqual(df_with_calendar.columns.to_list(), ['n1', 'n2', 'month', 'day'])
+            self.df_two_columns, calendar_components=['month', 'day'], drop_constant_columns=True)
+        self.assertEqual(df_with_calendar.columns.to_list(), ['n1', 'n2', 'day'])
 
     def test_add_calendar_components_returns_expected_result_if_drop_constant_columns_is_false(self):
         """ Test that add_calendar_components returns expected result if drop_constant_columns is False """
 
         df_with_calendar = data_transformation.add_calendar_components(
-            self.df_two_columns, calendar_components=['year', 'month', 'day'], drop_constant_columns=False)
-        self.assertEqual(df_with_calendar.columns.to_list(), ['n1', 'n2', 'year', 'month', 'day'])
+            self.df_two_columns, calendar_components=['month', 'day'], drop_constant_columns=False)
+        self.assertEqual(df_with_calendar.columns.to_list(), ['n1', 'n2', 'month', 'day'])
+
+    def test_add_calendar_components_transformer_returns_same_results_as_function(self):
+        """ Test that calendar component transformer and add_calendar_components return same results """
+
+        calendar_components = ['month', 'day']
+
+        assert_frame_equal(
+            data_transformation.add_calendar_components(
+                self.df_two_columns, calendar_components=calendar_components, drop_constant_columns=False),
+            data_transformation.CalendarComponentTransformer(
+                components=calendar_components).fit_transform(self.df_two_columns),
+            check_exact=False,
+            check_dtype=False)
+
+    def test_add_calendar_components_transformer_returns_same_results_as_function_with_encoding(self):
+        """ Test that calendar component transformer and add_calendar_components return same results """
+
+        calendar_components = ['month', 'day']
+        df_calendar = data_transformation.add_calendar_components(
+                self.df_two_columns, calendar_components=calendar_components, drop_constant_columns=False)
+        df_transformed1 = data_transformation.CalendarComponentTransformer(
+            components=calendar_components, encode=True).fit_transform(self.df_two_columns)
+        column_transformer = data_transformation.trigonometric_encode_calendar_components(
+            data=df_calendar, calendar_components=calendar_components)
+        df_transformed2 = column_transformer.fit_transform(df_calendar)
+        df_transformed2 = pd.DataFrame(
+            data=df_transformed2,
+            index=df_calendar.index,
+            columns=['month_sin', 'month_cos', 'day_sin', 'day_cos', 'n1', 'n2'])
+        # Sort columns in the same order
+        df_transformed2 = df_transformed2[df_transformed1.columns.to_list()]
+        assert_frame_equal(
+            df_transformed1,
+            df_transformed2,
+            check_exact=False,
+            check_dtype=False)
 
     @classmethod
     def tearDownClass(cls):

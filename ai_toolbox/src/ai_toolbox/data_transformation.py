@@ -2,16 +2,18 @@
 # -*- coding: utf-8 -*-
 
 from datetime import datetime
-
-import pandas as pd
-import pytz
-from pandas.tseries.frequencies import to_offset
-from sklearn.compose import ColumnTransformer
-from numpy import pi, sin, cos
-from sklearn.preprocessing import FunctionTransformer
+from datetime import timedelta
 from itertools import chain
 
+import holidays
+import pandas as pd
+import pytz
 from ai_toolbox.data_preparation import detect_time_step
+from numpy import pi, sin, cos
+from pandas.tseries.frequencies import to_offset
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import FunctionTransformer
 
 
 def yearly_profile_detection(data, exclude_days=None):
@@ -199,7 +201,182 @@ def weekly_profile_detection(data, exclude_days=None):
     return df_group
 
 
-def add_lag_components(data, columns=None, max_lag=1):
+class HolidayTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transformer version of the function add_holiday_component
+    to be used with sklearn Pipelines.
+    """
+
+    def __init__(self, country: str, prov: str = None, state: str = None, switch_on: bool = True):
+        """
+        Adds the holiday feature to the input DataFrame based on the country.
+        The computation of the holidays is based on the package
+        available in pypi: https://pypi.org/project/holidays/ .
+        Check the documentation for more information about country and region codes.
+
+        :param country: string identifying the country based on ISO 3166-1 alpha-2 code.
+        :param prov: The Province (see documentation of what is supported; not
+           implemented for all countries).
+        :param state: The State (see documentation for what is supported; not
+           implemented for all countries).
+        :param switch_on: Can be used to enable or disable the transformation.
+            Useful in the hyperparameter optimization. If False, the input data
+            will be passed through.
+        :return: new DataFrame with the added holiday component.
+        """
+
+        self.country = country
+        self.switch_on = switch_on
+        self.prov = prov
+        self.state = state
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X) -> pd.DataFrame:
+        """
+
+        :param X:  input DataFrame with a DateTimeIndex.
+
+        :return:
+        """
+
+        # Retrieve the country holidays in the time range of the input data
+
+        if self.switch_on is True:
+            country_holidays = holidays.country_holidays(
+                country=self.country,
+                prov=self.prov,
+                state=self.state)[X.index.min():X.index.max() + timedelta(days=1)]
+            col_holidays = X.index.normalize().isin(country_holidays).astype(int)
+            return X.assign(holidays=col_holidays)
+        else:
+            return X
+
+
+class ScalerTransformer(BaseEstimator, TransformerMixin):
+    """
+    Wrapper around some preprocessing functions in sklearn.
+    Generally, sklearn transformers return numpy matrices,
+    which means that only the values of the DataFrame are
+    kept while the header and the index are stripped off.
+    The index in time series is an important feature we
+    do not want to lose in the transformation process.
+    """
+
+    def __init__(self, scaler: TransformerMixin, switch_on: bool = True):
+        """
+        Adds calendar components quarter, month, week, day, hour
+        to the input DataFrame.
+
+        :param scaler: a sklearn scaler, such as StandardScaler or MinMaxScaler.
+        :param switch_on: Can be used to enable or disable the transformation.
+            Useful in the hyperparameter optimization. If False, the input data
+            will be passed through.
+        :return: new DataFrame with the added calendar components.
+        """
+        self.scaler = scaler
+        self.switch_on = switch_on
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X) -> pd.DataFrame:
+        """
+        Applies the transformation done by the input scaler
+        to the X date while keeping the DataFrame format.
+        It assumes that the input scaler will not change
+        the column order of X.
+
+        :param X:  input DataFrame with a DateTimeIndex.
+        :return: new Dataframe with the scaled features.
+        """
+
+        if self.switch_on is True:
+            return pd.DataFrame(
+                data=self.scaler.fit_transform(X),
+                index=X.index,
+                columns=X.columns)
+        else:
+            return X
+
+
+class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transformer version of the functions add_calendar_components
+    and trigonometric_encode_calendar_components, to be used with
+    sklearn Pipelines.
+    """
+
+    def __init__(self, components: list = None, encode: bool = False, switch_on: bool = True):
+        """
+        Adds calendar components quarter, month, week, day, hour
+        to the input DataFrame.
+
+        :param components: List of strings, specifying the calendar components you want to add in
+            ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"].
+        :param encode: If True, encodes the calendar features into cyclic sin/cosine components.
+            For each calendar components, the transformer will generate one sin and one cosine
+            component.
+        :param switch_on: Can be used to enable or disable the transformation.
+            Useful in the hyperparameter optimization. If False, the input data
+            will be passed through.
+        """
+
+        default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
+        if components is None:
+            self.components = default_components
+        elif set(components).issubset(default_components):
+            self.components = components
+        else:
+            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(default_components))
+
+        self.encode = encode
+        self.switch_on = switch_on
+        self.component_period = {
+            "quarter": 4,
+            "month": 12,
+            "week": 53,
+            "weekday": 7,
+            "hour": 24,
+            "day": 31,
+            "dayofyear": 365
+        }
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X) -> pd.DataFrame:
+        """
+        :param X:  input DataFrame with a DateTimeIndex.
+        :return: new DataFrame with the added calendar components.
+        """
+
+        if self.switch_on is True:
+            if self.encode is True:
+                # Here we generate a sin and a cosine component for each calendar feature
+
+                encoded_components = {
+                    k: v for component in self.components for k, v in
+                    (
+                        ('{}_sin'.format(component), sin(getattr(X.index, component) /
+                                                         self.component_period[component] * 2 * pi)),
+                        ('{}_cos'.format(component), cos(getattr(X.index, component) /
+                                                         self.component_period[component] * 2 * pi))
+                    )
+                }
+                return X.assign(**encoded_components)
+
+            else:
+                return X.assign(**{
+                    '{}'.format(component): getattr(X.index, component)
+                    for component in self.components
+                })
+        else:
+            return X
+
+
+def add_lag_components(data: pd.DataFrame, columns: list = None, max_lag: int = 1) -> pd.DataFrame:
     """
     Returns a DataFrame with the lag components of the columns as new columns.
     If the argument 'columns' is not None, only the lag components of the
@@ -231,7 +408,9 @@ def add_lag_components(data, columns=None, max_lag=1):
     })
 
 
-def add_calendar_components(data, calendar_components=None, drop_constant_columns=True):
+def add_calendar_components(data: pd.DataFrame,
+                            calendar_components: list = None,
+                            drop_constant_columns: bool = True) -> pd.DataFrame:
     """
     Add calendar components year, quarter, month, week, day, hour
     to the input DataFrame.
@@ -246,7 +425,7 @@ def add_calendar_components(data, calendar_components=None, drop_constant_column
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    default_components = ["year", "quarter", "month", "week", "weekday", "hour", "day"]
+    default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
 
     if calendar_components is not None:
         if not set(calendar_components).issubset(default_components):
@@ -295,7 +474,16 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    default_components = ["year", "quarter", "month", "week", "weekday", "hour", "day"]
+    default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
+    component_period = {
+        "quarter": 4,
+        "month": 12,
+        "week": 53,
+        "weekday": 7,
+        "hour": 24,
+        "day": 31,
+        "dayofyear": 365
+    }
 
     if calendar_components is not None:
         if not set(calendar_components).issubset(default_components):
@@ -307,8 +495,8 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
     transformers = list(
         chain.from_iterable(
             (
-                ("{}_sin".format(component), sin_transformer(data[component].nunique()), [component]),
-                ("{}_cos".format(component), cos_transformer(data[component].nunique()), [component])
+                ("{}_sin".format(component), sin_transformer(component_period[component]), [component]),
+                ("{}_cos".format(component), cos_transformer(component_period[component]), [component])
             )
             for component in calendar_components)
     )
@@ -319,6 +507,33 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
     return ColumnTransformer(
         transformers=transformers,
         remainder=remainder)
+
+
+def add_holiday_component(data: pd.DataFrame, country: str, prov: str = None, state: str = None) -> pd.DataFrame:
+    """
+    Adds the holiday feature to the input DataFrame based on the country.
+    The computation of the holidays is based on the package
+    available in pypi: https://pypi.org/project/holidays/ .
+    Check the documentation for more information about country and region codes.
+
+    :param data: input DataFrame with a DateTimeIndex and at least one column.
+    :param country: string identifying the country based on ISO 3166-1 alpha-2 code.
+    :param prov: The Province (see documentation of what is supported; not
+       implemented for all countries).
+    :param state: The State (see documentation for what is supported; not
+       implemented for all countries).
+    :return: new DataFrame with the added holiday component.
+    """
+
+    if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
+        raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
+
+    country_holidays = holidays.country_holidays(
+        country=country,
+        prov=prov,
+        state=state)[data.index.min():data.index.max() + timedelta(days=1)]
+
+    return data.assign(holiday=data.index.normalize().isin(country_holidays).astype(int))
 
 
 if __name__ == '__main__':

@@ -130,6 +130,7 @@ setup(
         'scikit-learn>=0.24.2',
         'statsmodels>=0.12.2',
         'pandas>=1.1.2',
+        'holidays>=0.13',
         'matplotlib>=3.3.2',
         'pytorch-lightning>=1.5.4'
     ],

@@ -2,13 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-from unittest.mock import patch
 
 import numpy as np
-import pandas as pd
-import pytz
-from pandas.testing import assert_frame_equal, assert_series_equal
-
 from ai_toolbox import perfomance_metrics
 
 

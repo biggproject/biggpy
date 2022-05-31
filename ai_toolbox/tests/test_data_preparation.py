@@ -5,9 +5,8 @@ import unittest
 
 import numpy as np
 import pandas as pd
-from pandas.testing import assert_frame_equal, assert_series_equal
-
 from ai_toolbox import data_preparation
+from pandas.testing import assert_frame_equal, assert_series_equal
 
 
 class TestDataPreparation(unittest.TestCase):
