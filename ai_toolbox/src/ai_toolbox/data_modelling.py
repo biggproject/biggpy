@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from abc import ABC
 from os.path import isabs, splitext, dirname, isdir
+from typing import Union
 
 from numpy import arange, mean, std, full
 from sklearn.base import BaseEstimator, RegressorMixin
@@ -12,8 +13,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 
-# Do NOT delete the import below, it is needed to add custom performance metrics to the sklearn scorers
-from ai_toolbox import perfomance_metrics
+from ai_toolbox.perfomance_metrics import custom_scorers
 
 
 class BlockingTimeSeriesSplit(BaseCrossValidator, ABC):
@@ -192,6 +192,8 @@ def evaluate_model_cv_with_tuning(model_family, X_data, y_data, parameter_grid, 
     cv_results = []
     dict_scores = {}
 
+    sanitized_scorers = sanitize_scorers(scoring)
+
     # Initialize dict of aggregated scores in case of multiple scoring functions
     if isinstance(scoring, (list, tuple)):
         dict_scores = {"test_{}".format(score): list() for score in scoring}
@@ -217,16 +219,17 @@ def evaluate_model_cv_with_tuning(model_family, X_data, y_data, parameter_grid, 
         # Fill in the iterators with the scores obtained from the evaluation of best_estimator_
         if isinstance(scoring, (list, tuple)):
             # In case of multiple scoring metrics, build dict of scores per scoring function
-            for score in scoring:
+            for score in sanitized_scorers.keys():
                 score_name = "test_{}".format(score)
-                dict_scores[score_name].append(get_scorer(score)(fitted_model.best_estimator_, X_test, y_test))
+                dict_scores[score_name].append(
+                    get_scorer(sanitized_scorers[score])(fitted_model.best_estimator_, X_test, y_test))
 
         elif isinstance(scoring, str) or scoring is None:
             if scoring is None:
                 # Use default scorer for the estimator (accuracy for classifiers and r2 for regressors)
                 scores.append(fitted_model.best_estimator_.score(X_test, y_test))
             else:
-                scores.append(get_scorer(scoring)(fitted_model.best_estimator_, X_test, y_test))
+                scores.append(get_scorer(sanitized_scorers[scoring])(fitted_model.best_estimator_, X_test, y_test))
 
     # Aggregate values and return the results
     if isinstance(scoring, (list, tuple)):
@@ -280,6 +283,9 @@ def evaluate_model_cv_with_tuning_parallel(model_family, X_data, y_data, paramet
     if scoring is not None and not isinstance(scoring, (str, list, tuple)):
         raise TypeError("Parameter 'scoring' must be a 'str', 'list' or 'tuple'.")
 
+    # Sanitize scorers and get the scoring function in case of custom scorer
+    sanitized_scorers = sanitize_scorers(scoring)
+
     # Configure the internal hyper-parameter tuner
     hp_tuner = GridSearchCV(
         estimator=model_family,
@@ -293,7 +299,7 @@ def evaluate_model_cv_with_tuning_parallel(model_family, X_data, y_data, paramet
         estimator=hp_tuner,
         X=X_data,
         y=y_data,
-        scoring=scoring,
+        scoring=sanitized_scorers,
         cv=cv_outer,
         n_jobs=-1
     )
@@ -485,6 +491,28 @@ def deserialize_and_predict(model_full_path, x_data):
     check_is_fitted(model_instance)
 
     return model_instance.predict(x_data)
+
+
+def sanitize_scorers(scorers: Union[str, list, tuple]) -> dict:
+    """
+    Returns a dictionary of key-value pairs where the key is a string
+    identifying the scorer and the value is the same string if the scorer
+    is a predefined scikit-learn scorer or the scorer object if it is a
+    custom ai-toolbox scorer.
+
+    :param scorers: string or list/tuple of strings identifying a scorer to use
+    :return: dictionary of 'sanitized scorers' to be used in crossvalidate
+    """
+
+    if isinstance(scorers, str):
+        if scorers in custom_scorers.keys():
+            return {scorers: custom_scorers[scorers]}
+        else:
+            return {scorers: scorers}
+    elif isinstance(scorers, (list, tuple)):
+        return {scorer: (custom_scorers[scorer] if scorer in custom_scorers.keys() else scorer) for scorer in scorers}
+    else:
+        raise ValueError("'{}' is not a valid scoring value.".format(scorers))
 
 
 if __name__ == '__main__':
