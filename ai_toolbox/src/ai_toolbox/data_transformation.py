@@ -8,12 +8,13 @@ from itertools import chain
 import holidays
 import pandas as pd
 import pytz
-from ai_toolbox.data_preparation import detect_time_step
 from numpy import pi, sin, cos
 from pandas.tseries.frequencies import to_offset
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import FunctionTransformer
+
+from ai_toolbox.data_preparation import detect_time_step
 
 
 def yearly_profile_detection(data, exclude_days=None):

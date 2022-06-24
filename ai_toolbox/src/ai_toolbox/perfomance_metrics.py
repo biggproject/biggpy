@@ -3,7 +3,7 @@
 
 import numpy as np
 
-from sklearn.metrics import make_scorer, SCORERS
+from sklearn.metrics import make_scorer
 from sklearn.utils.validation import check_consistent_length
 
 
@@ -119,11 +119,11 @@ cv_rmse_scorer = make_scorer(
     multioutput='uniform_average',
     number_of_parameters=1)
 
-SCORERS.update({
+custom_scorers = {
     'mean_bias_error': mean_bias_error_scorer,
     'normalized_mean_bias_error': normalized_mean_bias_error_scorer,
     'cv_rmse': cv_rmse_scorer
-})
+}
 
 if __name__ == '__main__':
     """
@@ -131,7 +131,3 @@ if __name__ == '__main__':
     This part below is only for testing purposes. 
     """
 
-    y_true = np.array([-2, -1, 0, 1, 2])
-    y_pred = np.array([-3, -2, 1, 3, 2])
-
-    print(mean_bias_error(y_true=y_true, y_pred=y_pred, normalized=True))
