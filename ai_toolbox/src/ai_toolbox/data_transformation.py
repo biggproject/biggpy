@@ -324,7 +324,7 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
             will be passed through.
         """
 
-        default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
+        default_components = ["quarter", "month", "week", "weekofyear", "weekday", "hour", "day", "dayofyear"]
         if components is None:
             self.components = default_components
         elif set(components).issubset(default_components):
@@ -338,6 +338,7 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
             "quarter": 4,
             "month": 12,
             "week": 53,
+            "weekofyear": 53,
             "weekday": 7,
             "hour": 24,
             "day": 31,
@@ -360,9 +361,9 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
                 encoded_components = {
                     k: v for component in self.components for k, v in
                     (
-                        ('{}_sin'.format(component), sin(getattr(X.index, component) /
+                        ('{}_sin'.format(component), sin(getattr(get_index_calendar(X, component), component) /
                                                          self.component_period[component] * 2 * pi)),
-                        ('{}_cos'.format(component), cos(getattr(X.index, component) /
+                        ('{}_cos'.format(component), cos(getattr(get_index_calendar(X, component), component) /
                                                          self.component_period[component] * 2 * pi))
                     )
                 }
@@ -370,7 +371,7 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
 
             else:
                 return X.assign(**{
-                    '{}'.format(component): getattr(X.index, component)
+                    '{}'.format(component): getattr(get_index_calendar(X, component), component)
                     for component in self.components
                 })
         else:
@@ -426,7 +427,7 @@ def add_calendar_components(data: pd.DataFrame,
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
+    default_components = ["quarter", "month", "week", "weekofyear", "weekday", "hour", "day", "dayofyear"]
 
     if calendar_components is not None:
         if not set(calendar_components).issubset(default_components):
@@ -435,7 +436,7 @@ def add_calendar_components(data: pd.DataFrame,
         calendar_components = default_components
 
     df_new = data.assign(**{
-        '{}'.format(component): getattr(data.index, component)
+        '{}'.format(component): getattr(get_index_calendar(data, component), component)
         for component in calendar_components
     })
 
@@ -475,11 +476,12 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
+    default_components = ["quarter", "month", "week", "weekday", "weekofyear", "hour", "day", "dayofyear"]
     component_period = {
         "quarter": 4,
         "month": 12,
         "week": 53,
+        "weekofyear": 53,
         "weekday": 7,
         "hour": 24,
         "day": 31,
@@ -535,6 +537,21 @@ def add_holiday_component(data: pd.DataFrame, country: str, prov: str = None, st
         state=state)[data.index.min():data.index.max() + timedelta(days=1)]
 
     return data.assign(holiday=data.index.normalize().isin(country_holidays).astype(int))
+
+
+def get_index_calendar(data: pd.DataFrame, component: str):
+    """
+    Method to avoid the Deprecation Warning when getting some calendar
+    components like week or weekofyear.
+
+    :param data: Dataframe with a DatetimeIndex
+    :param component: calendar component
+    :return: index or index.isocalendar() if the component is deprecated
+    """
+    if component in ['week', 'weekofyear']:
+        return data.index.isocalendar()
+    else:
+        return data.index
 
 
 if __name__ == '__main__':
