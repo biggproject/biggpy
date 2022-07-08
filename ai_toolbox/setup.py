@@ -34,7 +34,7 @@ setup(
     # For a discussion on single-sourcing the version across setup.py and the
     # project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='0.15.6',  # Required
+    version='0.15.7',  # Required
 
     # This is a one-line description or tagline of what your project does. This
     # corresponds to the "Summary" metadata field:
@@ -132,6 +132,7 @@ setup(
         'pandas>=1.1.2',
         'holidays>=0.13',
         'matplotlib>=3.3.2',
-        'pytorch-lightning>=1.5.4'
+        'pytorch-lightning>=1.5.4',
+        'cloudpickle>=2.0.0'
     ],
 )

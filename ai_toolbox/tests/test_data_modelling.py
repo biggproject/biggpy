@@ -9,7 +9,6 @@ from numpy.testing import assert_array_equal
 from sklearn import svm
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import KFold
-from sklearn.utils.validation import NotFittedError
 
 
 class TestDataModelling(unittest.TestCase):
@@ -59,17 +58,8 @@ class TestDataModelling(unittest.TestCase):
             self.fitted_model,
             "/tmp/some_dir_not_existing/my_model")
 
-    def test_serialize_model_raises_if_not_model_not_fitted(self):
-        """ Test that serialize_model raises if the model to serialize is not fitted """
-
-        self.assertRaises(
-            NotFittedError,
-            data_modelling.serialize_model,
-            self.clf,
-            self.full_path)
-
     def test_serialize_model_returns_expected_prediction_with_joblib(self):
-        """ Test that serialize_model returns expected prediction """
+        """ Test that serialize_model returns expected prediction with joblib """
         from joblib import load
 
         my_model = data_modelling.serialize_model(self.fitted_model, self.full_path)
@@ -77,10 +67,19 @@ class TestDataModelling(unittest.TestCase):
         assert_array_equal(self.fitted_model.predict(self.X[-8:]), my_model.predict(self.X[-8:]))
 
     def test_serialize_model_returns_expected_prediction_with_pickle(self):
-        """ Test that serialize_model returns expected prediction with pickle"""
+        """ Test that serialize_model returns expected prediction with pickle """
         from pickle import load
 
         my_model = data_modelling.serialize_model(self.fitted_model, self.full_path, "pickle")
+        with open(my_model, 'rb') as f:
+            my_model = load(f)
+        assert_array_equal(self.fitted_model.predict(self.X[-8:]), my_model.predict(self.X[-8:]))
+
+    def test_serialize_model_returns_expected_prediction_with_cloudpickle(self):
+        """ Test that serialize_model returns expected prediction with cloudpickle """
+        from cloudpickle import load
+
+        my_model = data_modelling.serialize_model(self.fitted_model, self.full_path, "cloudpickle")
         with open(my_model, 'rb') as f:
             my_model = load(f)
         assert_array_equal(self.fitted_model.predict(self.X[-8:]), my_model.predict(self.X[-8:]))
@@ -114,18 +113,6 @@ class TestDataModelling(unittest.TestCase):
             "/tmp/some_dir_not_existing/my_model.joblib",
             self.X)
 
-    def test_deserialize_and_predict_raises_if_model_not_fitted(self):
-        """ Test that deserialize_and_predict raises if the model to serialize is not fitted """
-
-        from joblib import dump
-
-        dump(self.clf, self.full_path_ext)
-        self.assertRaises(
-            NotFittedError,
-            data_modelling.deserialize_and_predict,
-            self.full_path_ext,
-            self.X)
-
     def test_deserialize_and_predict_returns_expected_prediction_with_pickle(self):
         """ Test that deserialize_and_predict returns expected prediction with pickle """
         
@@ -133,8 +120,15 @@ class TestDataModelling(unittest.TestCase):
         predictions = data_modelling.deserialize_and_predict(my_model, self.X[-8:])
         assert_array_equal(self.fitted_model.predict(self.X[-8:]), predictions)
 
+    def test_deserialize_and_predict_returns_expected_prediction_with_cloudpickle(self):
+        """ Test that deserialize_and_predict returns expected prediction with cloudpickle """
+
+        my_model = data_modelling.serialize_model(self.fitted_model, self.full_path, "cloudpickle")
+        predictions = data_modelling.deserialize_and_predict(my_model, self.X[-8:])
+        assert_array_equal(self.fitted_model.predict(self.X[-8:]), predictions)
+
     def test_deserialize_and_predict_returns_expected_prediction_with_joblib(self):
-        """ Test that deserialize_and_predict returns expected prediction with pickle """
+        """ Test that deserialize_and_predict returns expected prediction with joblib """
 
         my_model = data_modelling.serialize_model(self.fitted_model, self.full_path)
         predictions = data_modelling.deserialize_and_predict(my_model, self.X[-8:])
