@@ -4,6 +4,7 @@ from abc import ABC
 from os.path import isabs, splitext, dirname, isdir
 from typing import Union
 
+from ai_toolbox.perfomance_metrics import custom_scorers
 from numpy import arange, mean, std, full
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.linear_model import LinearRegression
@@ -12,8 +13,6 @@ from sklearn.model_selection import GridSearchCV, BaseCrossValidator, cross_vali
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
-
-from ai_toolbox.perfomance_metrics import custom_scorers
 
 
 class BlockingTimeSeriesSplit(BaseCrossValidator, ABC):
@@ -428,8 +427,8 @@ def identify_best_model(X_data, y_data, model_families_parameter_grid, cv_outer,
 
 def serialize_model(model_instance, model_full_path, model_format='joblib'):
     """
-    This function serializes and saves a model instance, according to the specified file format,
-     to the specified full path on the file system.
+    This function serializes and saves a model instance or a complete pipeline,
+    according to the specified file format, to the specified full path on the file system.
 
     :param model_instance: Model instance which has been already fitted on X data.
     :param model_full_path: String identifying the full path (not relative and with no file extensions) of the file
@@ -440,13 +439,10 @@ def serialize_model(model_instance, model_full_path, model_format='joblib'):
         according to the format chosen.
     """
 
-    if model_format not in ['joblib', 'pickle']:
-        raise ValueError("Serialization format must be in ['joblib', 'pickle'].")
+    if model_format not in ['joblib', 'pickle', 'cloudpickle']:
+        raise ValueError("Serialization format must be in ['joblib', 'pickle', 'cloudpickle'].")
     elif not isabs(model_full_path) or not isdir(dirname(model_full_path)):
         raise ValueError("The model path is not an absolute path or the directory does not exist.")
-
-    # Check that the model is fitted before serializing
-    check_is_fitted(model_instance)
 
     filename = "{}.{}".format(model_full_path, model_format)
     if model_format == 'joblib':
@@ -456,13 +452,17 @@ def serialize_model(model_instance, model_full_path, model_format='joblib'):
         from pickle import dump
         with open(filename, 'wb') as f:
             dump(model_instance, f)
+    elif model_format == 'cloudpickle':
+        from cloudpickle import dump
+        with open(filename, 'wb') as f:
+            dump(model_instance, f)
 
     return filename
 
 
 def deserialize_and_predict(model_full_path, x_data):
     """
-    This function deserializes a model, inferring the file format from the file name,
+    This function deserializes a model or a pipeline, inferring the file format from the file name,
      applies the model on the X_data and returns the predicted values in the form of a time series.
 
     :param model_full_path: String identifying the full path (not relative and with the extension), on the file system
@@ -474,8 +474,8 @@ def deserialize_and_predict(model_full_path, x_data):
 
     path, ext = splitext(model_full_path)
 
-    if ext not in ['.joblib', '.pickle']:
-        raise ValueError("Model extension must be in ['.joblib', '.pickle'].")
+    if ext not in ['.joblib', '.pickle', '.cloudpickle']:
+        raise ValueError("Model extension must be in ['.joblib', '.pickle', '.cloudpickle'].")
     elif not isabs(model_full_path) or not isdir(dirname(model_full_path)):
         raise ValueError("The model path is not an absolute path or the directory does not exist.")
 
@@ -486,9 +486,10 @@ def deserialize_and_predict(model_full_path, x_data):
         from pickle import load
         with open(model_full_path, 'rb') as f:
             model_instance = load(f)
-
-    # Check that the model is fitted after loading it and before predicting
-    check_is_fitted(model_instance)
+    elif ext == '.cloudpickle':
+        from cloudpickle import load
+        with open(model_full_path, 'rb') as f:
+            model_instance = load(f)
 
     return model_instance.predict(x_data)
 
