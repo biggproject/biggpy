@@ -126,13 +126,18 @@ setup(
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
-        'torch>=1.10.0',
+        'wheel',
         'scikit-learn>=0.24.2',
         'statsmodels>=0.12.2',
         'pandas>=1.1.2',
         'holidays>=0.13',
-        'matplotlib>=3.3.2',
-        'pytorch-lightning>=1.5.4',
         'cloudpickle>=2.0.0'
     ],
+    extras_require={
+        "RL": [
+            'torch>=1.10.0',
+            'pytorch-lightning>=1.5.4'
+        ],
+        "plot": ['matplotlib>=3.3.2']
+    }
 )
