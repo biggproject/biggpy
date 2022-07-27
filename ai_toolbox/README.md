@@ -26,13 +26,24 @@ run inside the venv:
 pip3 install -e .
 ```
 
-This command should be executed by developers. It will install this package in "editable" mode using the script setup.py
+This command should be executed by developers and will install the base dependencies of the package. 
+It will install this package in "editable" mode using the script setup.py
 and all its dependencies. This implies that any changes to the original package would reflect directly in your 
 environment.
 
 #### Production 
 ```bash
 pip3 install .
+```
+#### Extra dependencies
+Considering the significant size of the libraries required for Reinforcement Learning, those dependencies have been
+moved to the extras' section. To install the base package plus the extra dependencies for RL run:
+```bash
+pip3 install .[RL]
+```
+To install the extra dependencies for plotting:
+```bash
+pip3 install .[plot]
 ```
 
 ## Requirements
