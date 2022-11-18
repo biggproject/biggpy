@@ -445,6 +445,12 @@ def add_calendar_components(data: pd.DataFrame,
     return df_new
 
 
+def add_degree_days_component(data: pd.DataFrame,
+                              base_temperature: float = None,
+                              mode: str = "heating") -> pd.DataFrame:
+    """  """
+
+
 def trigonometric_encode_calendar_components(data, calendar_components=None, remainder='passthrough', drop=True):
     """
     This function returns a sklearn transformer to encode all the calendar components
@@ -550,6 +556,45 @@ def get_index_calendar(data: pd.DataFrame, component: str):
         return data.index.isocalendar()
     else:
         return data.index
+
+
+def crange(start: int, end: int, length: int, include_zero=True):
+    """
+    Generated a circular range given a start point, an end and
+    the length of the array.
+    For example, it can be used to generate calendar ranges for
+    arrays representing the days of the weeks, the hours of the
+    day, the months of the year, etc. which have a cyclic nature.
+    For example:
+    months_of_year = [*range(1, 13)]
+    list(crange(10, 6, 12, include_zero=False))
+    >> [10, 11, 12, 1, 2, 3, 4, 5]
+
+    hours_of_day = [*range(0, 24)]
+    list(crange(15, 2, 24, include_zero=True))
+    >> [15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1]
+
+    days_of_week = [*range(0, 7)]
+    list(crange(4, 4, 7, include_zero=True))
+
+    :param start: integer representing the range start.
+    :param end: integer representing the range end.
+    :param length: length of the array.
+    :param include_zero: True if the list contains the
+        zero, like weekdays or hours of day, false otherwise.
+    :return: yields all the elements of the calendar feature
+        in the specific range, taking into account the intrinsic
+        cyclic nature.
+    """
+
+    length = length + 1 if not include_zero else length
+    index = start
+    while index != end:
+        if not include_zero and not index:
+            index += 1
+            continue
+        yield index
+        index = (index + 1) % length
 
 
 if __name__ == '__main__':

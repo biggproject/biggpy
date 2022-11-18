@@ -338,6 +338,23 @@ class TestDataTransformation(unittest.TestCase):
             check_exact=False,
             check_dtype=False)
 
+    def test_crange_returns_expected_result_if_start_lower_than_end(self):
+        """ Test that crange returns expected result if start lower than end """
+
+        self.assertEqual(list(data_transformation.crange(3, 9, 12, include_zero=False)), [*range(3, 9)])
+        self.assertEqual(list(data_transformation.crange(0, 5, 12, include_zero=True)), [*range(0, 5)])
+
+    def test_crange_returns_expected_result_if_start_greater_than_end(self):
+        """ Test that crange returns expected result if start greater than end"""
+
+        self.assertEqual(list(data_transformation.crange(10, 4, 12, include_zero=False)), [10, 11, 12, 1, 2, 3])
+        self.assertEqual(list(data_transformation.crange(20, 3, 24, include_zero=True)), [*range(20, 24)] + [0, 1, 2])
+
+    def test_crange_returns_expected_result_if_start_equal_end(self):
+        """ Test that crange returns expected result if start is equal to end """
+
+        self.assertEqual(list(data_transformation.crange(4, 4, 7, include_zero=False)), [4, 5, 6, 0, 1, 2, 3])
+
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()
