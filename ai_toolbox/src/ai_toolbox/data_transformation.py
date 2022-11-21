@@ -587,14 +587,12 @@ def crange(start: int, end: int, length: int, include_zero=True):
         cyclic nature.
     """
 
-    length = length + 1 if not include_zero else length
-    index = start
-    while index != end:
-        if not include_zero and not index:
-            index += 1
-            continue
-        yield index
-        index = (index + 1) % length
+    end = end if start < end else end + length
+    for i in range(start, end):
+        if not include_zero and not i % length:
+            yield length
+        else:
+            yield i % length
 
 
 if __name__ == '__main__':
