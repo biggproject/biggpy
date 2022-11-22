@@ -440,7 +440,8 @@ def add_calendar_components(data: pd.DataFrame,
     })
 
     if drop_constant_columns:
-        df_new = df_new.loc[:, (df_new[calendar_components] != df_new.iloc[0]).any()]
+        varying_columns = [e for e in df_new.columns if df_new[e].nunique() != 1]
+        return df_new.loc[:, varying_columns]
 
     return df_new
 
