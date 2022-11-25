@@ -67,6 +67,8 @@ class TestDataTransformation(unittest.TestCase):
             columns=["n1", "n2"]
         )
 
+        idx = pd.date_range(start='2021/10/28', end='2021/11/15', tz=pytz.utc, freq='D')
+        cls.df_holidays = pd.DataFrame(data=np.random.randint(0, 10), index=idx, columns=['n1'])
     # yearly_profile_detection tests below
 
     def test_yearly_profile_detection_raises_if_empty_series(self):
@@ -337,6 +339,19 @@ class TestDataTransformation(unittest.TestCase):
             df_transformed2,
             check_exact=False,
             check_dtype=False)
+
+    def test_add_holiday_component_returns_expected_result(self):
+        """ Test that holidays returns expected results """
+
+        df_holidays = data_transformation.add_holiday_component(self.df_holidays, country='BE')
+        self.assertEqual(df_holidays.holiday.to_list(), [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0])
+
+    def test_holiday_transformer_returns_expected_result(self):
+        """ Test that holidays returns expected results """
+
+        df_holidays = data_transformation.HolidayTransformer(country='BE').fit_transform(self.df_holidays)
+        self.assertEqual(df_holidays.holiday.to_list(), [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0])
+
 
     @classmethod
     def tearDownClass(cls):
