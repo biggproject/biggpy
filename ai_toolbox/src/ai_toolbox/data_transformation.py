@@ -249,8 +249,8 @@ class HolidayTransformer(BaseEstimator, TransformerMixin):
                 country=self.country,
                 prov=self.prov,
                 state=self.state)[X.index.min():X.index.max() + timedelta(days=1)]
-            col_holidays = X.index.normalize().isin(country_holidays).astype(int)
-            return X.assign(holidays=col_holidays)
+            col_holidays = pd.DatetimeIndex(X.index.date).isin(country_holidays).astype(int)
+            return X.assign(holiday=col_holidays)
         else:
             return X
 
@@ -534,7 +534,7 @@ def add_holiday_component(data: pd.DataFrame, country: str, prov: str = None, st
         prov=prov,
         state=state)[data.index.min():data.index.max() + timedelta(days=1)]
 
-    return data.assign(holiday=data.index.normalize().isin(country_holidays).astype(int))
+    return data.assign(holiday=pd.DatetimeIndex(data.index.date).isin(country_holidays).astype(int))
 
 
 def get_index_calendar(data: pd.DataFrame, component: str):
