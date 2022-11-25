@@ -352,7 +352,6 @@ class TestDataTransformation(unittest.TestCase):
         df_holidays = data_transformation.HolidayTransformer(country='BE').fit_transform(self.df_holidays)
         self.assertEqual(df_holidays.holiday.to_list(), [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0])
 
-
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()
