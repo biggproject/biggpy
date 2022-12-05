@@ -4,8 +4,7 @@ from abc import ABC
 from os.path import isabs, splitext, dirname, isdir
 from typing import Union
 
-from ai_toolbox.perfomance_metrics import custom_scorers
-from numpy import arange, mean, std, full
+from numpy import arange, maximum, mean, std, full
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import get_scorer
@@ -13,6 +12,8 @@ from sklearn.model_selection import GridSearchCV, BaseCrossValidator, cross_vali
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
+
+from ai_toolbox.perfomance_metrics import custom_scorers
 
 
 class BlockingTimeSeriesSplit(BaseCrossValidator, ABC):
@@ -73,6 +74,53 @@ class BlockingTimeSeriesSplit(BaseCrossValidator, ABC):
             stop = start + (fold_sizes[i])
             mid = int(0.5 * (stop - start)) + start
             yield indices[start: mid], indices[mid + self.gap: stop]
+
+
+class NNWrapper(BaseEstimator, RegressorMixin):
+    """
+    Non-Negative Wrapper wraps other estimators to generate only non-negative predictions.
+    This can be useful with polynomial regression when modeling on data that cannot
+    assume negative values.
+    """
+
+    def __init__(self, estimator, **kwargs):
+        self.estimator = estimator
+        self.estimator.__init__(**kwargs)
+        self.X_ = None
+        self.y_ = None
+        self.coef_ = None
+        self.intercept_ = None
+
+    def fit(self, X, y):
+
+        # Check that X and y have correct shape
+        X, y = check_X_y(X, y)
+        self.X_ = X
+        self.y_ = y
+
+        # Fit the model and store the coefficients and intercept internally
+        fitted_model = self.estimator.fit(X=X, y=y)
+        self.coef_ = self.estimator.coef_
+        self.intercept_ = self.estimator.intercept_
+
+        return fitted_model
+
+    def predict(self, X):
+
+        # Check is fit had been called
+        check_is_fitted(self)
+        # Input validation
+        X = check_array(X)
+        return maximum(self.estimator.predict(X=X), 0)
+
+    def set_params(self, **parameters):
+        """
+        Redefine 'set_params', used by optimization frameworks, e.g. GridSearchCV,
+        to override the parameters set in the _init_ method.
+        """
+
+        self.estimator.set_params(**parameters)
+        return self
 
 
 class PolynomialRegression(BaseEstimator, RegressorMixin):
@@ -526,6 +574,7 @@ if __name__ == '__main__':
 
     from sklearn.datasets import load_diabetes
     from sklearn.model_selection import KFold
+    from sklearn.linear_model import Lasso
     from time import time
 
     start_time = time()
@@ -536,9 +585,14 @@ if __name__ == '__main__':
     cv_splitter_outer = KFold(n_splits=5, shuffle=True, random_state=1)
     cv_splitter_inner = KFold(n_splits=3, shuffle=True, random_state=1)
     grid = {
-        PolynomialRegression(): {
-            'degree': list(range(1, 5))
-        }
+        Pipeline([
+            ('poly', PolynomialFeatures(include_bias=False)),
+            ('model', NNWrapper(estimator=Lasso()))
+        ]):
+            {
+                'poly__degree': list(range(3, 5)),
+                'model__alpha': [0.1, 1, 10]
+            }
     }
     results = identify_best_model(
         X_data=df_X,
