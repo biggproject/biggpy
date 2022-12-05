@@ -6,9 +6,9 @@ from datetime import timedelta
 from itertools import chain
 
 import holidays
+import numpy as np
 import pandas as pd
 import pytz
-from numpy import pi, sin, cos
 from pandas.tseries.frequencies import to_offset
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
@@ -89,10 +89,10 @@ def yearly_profile_detection(data, exclude_days=None):
 
     # Get datetime object from columns year, month and day applying to timestamp row wise
     df_group["timestamp"] = df_group.apply(lambda x: to_timestamp(
-            day=x["day"],
-            month=x["month"],
-            year=data.index.year[-1]),
-        axis=1)
+        day=x["day"],
+        month=x["month"],
+        year=data.index.year[-1]),
+                                           axis=1)
 
     # Drop rows with at least one NaT (number of days per month can be different over the years)
     df_group.dropna(axis=0, how='any', inplace=True)
@@ -186,11 +186,11 @@ def weekly_profile_detection(data, exclude_days=None):
 
     # Get datetime object from columns year, month and day applying to timestamp row wise
     df_group["timestamp"] = df_group.apply(lambda x: to_timestamp(
-            hour=x["hour"],
-            day=x["day"],
-            month=x["month"],
-            year=x["year"]),
-        axis=1)
+        hour=x["hour"],
+        day=x["day"],
+        month=x["month"],
+        year=x["year"]),
+                                           axis=1)
 
     # Drop rows with at least one NaT (number of days per month can be different over the years)
     df_group.dropna(axis=0, how='any', inplace=True)
@@ -360,10 +360,10 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
                 encoded_components = {
                     k: v for component in self.components for k, v in
                     (
-                        ('{}_sin'.format(component), sin(getattr(get_index_calendar(X, component), component) /
-                                                         self.component_period[component] * 2 * pi)),
-                        ('{}_cos'.format(component), cos(getattr(get_index_calendar(X, component), component) /
-                                                         self.component_period[component] * 2 * pi))
+                        ('{}_sin'.format(component), np.sin(getattr(get_index_calendar(X, component), component) /
+                                                            self.component_period[component] * 2 * np.pi)),
+                        ('{}_cos'.format(component), np.cos(getattr(get_index_calendar(X, component), component) /
+                                                            self.component_period[component] * 2 * np.pi))
                     )
                 }
                 return X.assign(**encoded_components)
@@ -468,10 +468,10 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
     """
 
     def sin_transformer(period):
-        return FunctionTransformer(lambda x: sin(x / period * 2 * pi))
+        return FunctionTransformer(lambda x: np.sin(x / period * 2 * np.pi))
 
     def cos_transformer(period):
-        return FunctionTransformer(lambda x: cos(x / period * 2 * pi))
+        return FunctionTransformer(lambda x: np.cos(x / period * 2 * np.pi))
 
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
