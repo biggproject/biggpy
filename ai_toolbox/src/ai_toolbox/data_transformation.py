@@ -553,6 +553,19 @@ def get_index_calendar(data: pd.DataFrame, component: str):
         return data.index
 
 
+def add_weekly_profile(data: pd.DataFrame, target: str) -> pd.DataFrame:
+    """
+    Detects the weekly profile of the target feature, aligning it with the
+    the other data and repeating it for the entire time range.
+    :param data: input Dataframe
+    :param target: target feature for the weekly profile
+    :return: DataFrame with the weekly profile included
+    """
+
+
+
+    
+
 if __name__ == '__main__':
     """
     This module is not supposed to run as a stand-alone module.
