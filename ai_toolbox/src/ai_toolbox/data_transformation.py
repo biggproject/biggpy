@@ -13,6 +13,7 @@ from pandas.tseries.frequencies import to_offset
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import FunctionTransformer
+from sklearn.utils.validation import check_is_fitted, check_X_y
 
 from ai_toolbox.data_preparation import detect_time_step
 
@@ -104,7 +105,7 @@ def yearly_profile_detection(data, exclude_days=None):
     return df_group
 
 
-def weekly_profile_detection(data, exclude_days=None):
+def weekly_profile_detection(data: pd.DataFrame, aggregation: str = 'median', exclude_days: pd.Series = None):
     """
     The function returns the weekly profile of the input time series.
     It aggregates values of the input data over multiple years using
@@ -114,6 +115,7 @@ def weekly_profile_detection(data, exclude_days=None):
     The input series should cover at least two weeks of data.
 
     :param data: Input time series whose weekly profile has to be detected.
+    :param aggregation: Aggregation function to use for the profile.
     :param exclude_days: Time series of days to exclude from the input time series.
     :return: Time series representing the weekly profile, e.g. weekly electricity consumption
             pattern of the input time series at hourly frequency.
@@ -168,7 +170,7 @@ def weekly_profile_detection(data, exclude_days=None):
             raise TypeError("exclude_days argument must be a list of a boolean series of days to exclude.")
 
     # Group data first by month and then by day and aggregate by median
-    df_group = data.groupby(by=[data.index.dayofweek, data.index.hour]).median()
+    df_group = data.groupby(by=[data.index.dayofweek, data.index.hour]).agg(aggregation)
 
     # Set names of multiindex columns to identify month and day
     df_group.index.set_names(["dayofweek", "hour"], inplace=True)
@@ -377,6 +379,71 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
             return X
 
 
+class WeeklyProfileTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transformer version of the function add_weekly_profile, to be used with
+    sklearn Pipelines.
+    """
+
+    def __init__(self, aggregation: str = "median", switch_on: bool = True):
+        """
+        Adds calendar components quarter, month, week, day, hour
+        to the input DataFrame.
+
+        :param aggregation: aggregation function to use for the profile
+        :param switch_on: Can be used to enable or disable the transformation.
+            Useful in the hyperparameter optimization. If False, the input data
+            will be passed through.
+        """
+
+        self.aggregation = aggregation
+        self.feature_name = ""
+        self.switch_on = switch_on
+        self.profile_ = None
+
+    def fit(self, X, y=None):
+
+        check_X_y(X, y, ensure_2d=False)
+
+        # Check input data before computing profile
+
+        if isinstance(y, pd.Series):
+            y = y.to_frame()
+
+        if not isinstance(X.index, pd.DatetimeIndex) or not isinstance(y.index, pd.DatetimeIndex):
+            raise ValueError("Input must be a pandas DataFrame or Series with a DateTimeIndex.")
+
+        elif y.index.isocalendar().week.nunique() < 2:
+            raise ValueError("Input time series must cover at least two weeks to get a weekly profile.")
+
+        # Create weekly profile and align it with the input dataframe
+        self.profile_ = y.groupby([y.index.dayofweek, y.index.hour]).agg(self.aggregation)
+        self.feature_name = "{}_weekly_profile".format(self.profile_.columns[0])
+        self.profile_.rename(columns={self.profile_.columns[0]: self.feature_name}, inplace=True)
+        self.profile_ = self.profile_.assign(dayofweek=self.profile_.index.get_level_values(0),
+                                             hour=self.profile_.index.get_level_values(1))
+        return self
+
+    def transform(self, X) -> pd.DataFrame:
+        """
+        :param X:  input DataFrame with a DateTimeIndex.
+        :return: new DataFrame with the added weekly profile.
+        """
+
+        check_is_fitted(self)
+        if self.switch_on is True:
+            if isinstance(X, pd.Series):
+                X = X.to_frame()
+            X_temp = X.assign(dayofweek=X.index.dayofweek, hour=X.index.hour)
+            merged_df = X_temp.reset_index().merge(self.profile_, on=["dayofweek", "hour"], how="left")
+            X_temp[self.feature_name] = merged_df[self.feature_name].values
+            X_temp.drop(columns=["dayofweek", "hour"], inplace=True)
+            return X_temp
+
+        else:
+            return X
+
+
 def add_lag_components(data: pd.DataFrame, columns: list = None, max_lag: int = 1) -> pd.DataFrame:
     """
     Returns a DataFrame with the lag components of the columns as new columns.
@@ -553,37 +620,51 @@ def get_index_calendar(data: pd.DataFrame, component: str):
         return data.index
 
 
-def add_weekly_profile(data: pd.DataFrame, target: str) -> pd.DataFrame:
+def add_weekly_profile(data: pd.DataFrame, target: str, aggregation: str = "median") -> pd.DataFrame:
     """
     Detects the weekly profile of the target feature, aligning it with the
     the other data and repeating it for the entire time range.
     :param data: input Dataframe
     :param target: target feature for the weekly profile
+    :param aggregation: aggregation function to use for the profile
     :return: DataFrame with the weekly profile included
     """
 
+    # Check input data before computing profile
+    if target not in data.columns:
+        raise KeyError("Feature '{}' not found in columns.".format(target))
+    elif data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
+        raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
+    elif detect_time_step(data[[target]])[0] is None:
+        raise ValueError("Impossible to determine the frequency of the input time series.")
 
-    
+    elif data.index.isocalendar().week.nunique() < 2:
+        raise ValueError("Input time series must cover at least two weeks to get a weekly profile.")
+
+    try:
+        frq_cmp = to_offset(detect_time_step(data[[target]])[0]) > to_offset('1H')
+        if frq_cmp:
+            raise ValueError("The frequency of the input time series must be not lower than '1H'.")
+    except TypeError:
+        raise ValueError("The frequency of the input time series must be not lower than '1H'.")
+
+    # Create weekly profile and align it with the input dataframe
+    feature_name = "{}_weekly_profile".format(target)
+    df_weekly = data[[target]].groupby([data.index.dayofweek, data.index.hour]).agg(aggregation)
+    df_weekly = df_weekly.assign(dayofweek=df_weekly.index.get_level_values(0),
+                                 hour=df_weekly.index.get_level_values(1))
+    df_weekly.rename(columns={target: feature_name}, inplace=True)
+    data_temp = data.assign(dayofweek=data.index.dayofweek, hour=data.index.hour)
+    merged_df = data_temp.reset_index().merge(df_weekly, on=["dayofweek", "hour"], how="left")
+    data_temp[feature_name] = merged_df[feature_name].values
+    data_temp.drop(columns=["dayofweek", "hour"], inplace=True)
+    return data_temp
+
 
 if __name__ == '__main__':
     """
     This module is not supposed to run as a stand-alone module.
     This part below is only for testing purposes. 
     """
-    from os.path import dirname, join, realpath, pardir
-    import matplotlib.pyplot as plt
 
-    # Load time series for profile (dataframe) from csv
-    dir_path = dirname(realpath(__file__))
-    filename = join(dir_path, pardir, pardir, "tests", "fixtures", "df_weekly_profile.csv")
-    profile_data = pd.read_csv(
-        filename,
-        sep=',',
-        parse_dates=True,
-        infer_datetime_format=True,
-        index_col=0)
-
-    profile = weekly_profile_detection(profile_data)
-    profile.plot(ylim=(15, 30), figsize=(10, 10)).grid(which='major', axis='both', linestyle='--')
-    plt.show()
