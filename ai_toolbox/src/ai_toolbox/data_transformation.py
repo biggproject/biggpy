@@ -4,6 +4,7 @@
 from datetime import datetime
 from datetime import timedelta
 from itertools import chain
+from typing import Union
 
 import holidays
 import numpy as np
@@ -105,7 +106,8 @@ def yearly_profile_detection(data, exclude_days=None):
     return df_group
 
 
-def weekly_profile_detection(data: pd.DataFrame, aggregation: str = 'median', exclude_days: pd.Series = None):
+def weekly_profile_detection(
+        data: pd.DataFrame, aggregation: str = 'median', exclude_days: Union[pd.Series, list] = None):
     """
     The function returns the weekly profile of the input time series.
     It aggregates values of the input data over multiple years using
@@ -167,7 +169,7 @@ def weekly_profile_detection(data: pd.DataFrame, aggregation: str = 'median', ex
             mask = pd.Series(data.index.normalize().isin(exclude_days), index=data.index)
             data = data.mask(mask)
         else:
-            raise TypeError("exclude_days argument must be a list of a boolean series of days to exclude.")
+            raise TypeError("exclude_days argument must be a list or a boolean series of days to exclude.")
 
     # Group data first by month and then by day and aggregate by median
     df_group = data.groupby(by=[data.index.dayofweek, data.index.hour]).agg(aggregation)
@@ -317,7 +319,7 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
         to the input DataFrame.
 
         :param components: List of strings, specifying the calendar components you want to add in
-            ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"].
+            ["season", "quarter", "month", "week", "weekday", "hour", "day", "dayofyear"].
         :param encode: If True, encodes the calendar features into cyclic sin/cosine components.
             For each calendar components, the transformer will generate one sin and one cosine
             component.
@@ -326,17 +328,8 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
             will be passed through.
         """
 
-        default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
-        if components is None:
-            self.components = default_components
-        elif set(components).issubset(default_components):
-            self.components = components
-        else:
-            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(default_components))
-
-        self.encode = encode
-        self.switch_on = switch_on
         self.component_period = {
+            "season": 4,
             "quarter": 4,
             "month": 12,
             "week": 53,
@@ -345,6 +338,16 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
             "day": 31,
             "dayofyear": 365
         }
+        if components is None:
+            self.components = self.component_period.keys()
+        elif set(components).issubset(self.component_period.keys()):
+            self.components = components
+        else:
+            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(
+                self.component_period.keys()))
+
+        self.encode = encode
+        self.switch_on = switch_on
 
     def fit(self, X, y=None):
         return self
@@ -362,9 +365,9 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
                 encoded_components = {
                     k: v for component in self.components for k, v in
                     (
-                        ('{}_sin'.format(component), np.sin(getattr(get_index_calendar(X, component), component) /
+                        ('{}_sin'.format(component), np.sin(get_calendar_component(X, component) /
                                                             self.component_period[component] * 2 * np.pi)),
-                        ('{}_cos'.format(component), np.cos(getattr(get_index_calendar(X, component), component) /
+                        ('{}_cos'.format(component), np.cos(get_calendar_component(X, component) /
                                                             self.component_period[component] * 2 * np.pi))
                     )
                 }
@@ -372,7 +375,7 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
 
             else:
                 return X.assign(**{
-                    '{}'.format(component): getattr(get_index_calendar(X, component), component)
+                    '{}'.format(component): get_calendar_component(X, component)
                     for component in self.components
                 })
         else:
@@ -485,7 +488,7 @@ def add_calendar_components(data: pd.DataFrame,
 
     :param data: input DataFrame with a DateTimeIndex and at least one column.
     :param calendar_components: List of strings, specifying the calendar components you want to add in
-        ["year", "quarter", "month", "week", "day", "hour"].
+        ["season", "quarter", "month", "week", "weekday", "hour", "day", "dayofyear"].
     :param drop_constant_columns: If True, drops constant calendar components.
     :return: new DataFrame with the added calendar components.
     """
@@ -493,7 +496,7 @@ def add_calendar_components(data: pd.DataFrame,
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
+    default_components = ["season", "quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
 
     if calendar_components is not None:
         if not set(calendar_components).issubset(default_components):
@@ -502,7 +505,7 @@ def add_calendar_components(data: pd.DataFrame,
         calendar_components = default_components
 
     df_new = data.assign(**{
-        '{}'.format(component): getattr(get_index_calendar(data, component), component)
+        '{}'.format(component): get_calendar_component(data, component)
         for component in calendar_components
     })
 
@@ -543,8 +546,8 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
     component_period = {
+        "season": 4,
         "quarter": 4,
         "month": 12,
         "week": 53,
@@ -555,10 +558,10 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
     }
 
     if calendar_components is not None:
-        if not set(calendar_components).issubset(default_components):
-            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(default_components))
+        if not set(calendar_components).issubset(component_period.keys()):
+            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(component_period.keys()))
     else:
-        calendar_components = default_components
+        calendar_components = component_period.keys()
 
     # Create list of transformers for each column
     transformers = list(
@@ -605,19 +608,22 @@ def add_holiday_component(data: pd.DataFrame, country: str, prov: str = None, st
     return data.assign(holiday=pd.DatetimeIndex(data.index.date).isin(country_holidays).astype(int))
 
 
-def get_index_calendar(data: pd.DataFrame, component: str):
+def get_calendar_component(data: pd.DataFrame, component: str) -> pd.Series:
     """
     Method to avoid the Deprecation Warning when getting some calendar
-    components like week.
+    components like week and to compute season component.
 
     :param data: Dataframe with a DatetimeIndex
     :param component: calendar component
-    :return: index or index.isocalendar() if the component is deprecated
+    :return: calendar component
     """
-    if component in ['week']:
-        return data.index.isocalendar()
+
+    if component in ['week', 'weekofyear']:
+        return getattr(data.index.isocalendar(), component)
+    elif component == 'season':
+        return data.index.month % 12 // 3 + 1
     else:
-        return data.index
+        return getattr(data.index, component)
 
 
 def add_weekly_profile(data: pd.DataFrame, target: str, aggregation: str = "median") -> pd.DataFrame:

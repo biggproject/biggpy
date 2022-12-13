@@ -308,7 +308,7 @@ class TestDataTransformation(unittest.TestCase):
     def test_add_calendar_components_transformer_returns_same_results_as_function(self):
         """ Test that calendar component transformer and add_calendar_components return same results """
 
-        calendar_components = ['month', 'day']
+        calendar_components = None
 
         assert_frame_equal(
             data_transformation.add_calendar_components(
