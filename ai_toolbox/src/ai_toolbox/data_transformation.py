@@ -423,8 +423,8 @@ class WeeklyProfileTransformer(BaseEstimator, TransformerMixin):
         self.profile_ = y.groupby([y.index.dayofweek, y.index.hour]).agg(self.aggregation)
         self.feature_name = "{}_weekly_profile".format(self.profile_.columns[0])
         self.profile_.rename(columns={self.profile_.columns[0]: self.feature_name}, inplace=True)
-        self.profile_ = self.profile_.assign(dayofweek=self.profile_.index.get_level_values(0),
-                                             hour=self.profile_.index.get_level_values(1))
+        self.profile_ = self.profile_.assign(profile_key1=self.profile_.index.get_level_values(0),
+                                             profile_key2=self.profile_.index.get_level_values(1))
         return self
 
     def transform(self, X) -> pd.DataFrame:
@@ -437,10 +437,10 @@ class WeeklyProfileTransformer(BaseEstimator, TransformerMixin):
         if self.switch_on is True:
             if isinstance(X, pd.Series):
                 X = X.to_frame()
-            X_temp = X.assign(dayofweek=X.index.dayofweek, hour=X.index.hour)
-            merged_df = X_temp.reset_index().merge(self.profile_, on=["dayofweek", "hour"], how="left")
+            X_temp = X.assign(profile_key1=X.index.dayofweek, profile_key2=X.index.hour)
+            merged_df = X_temp.reset_index().merge(self.profile_, on=["profile_key1", "profile_key2"], how="left")
             X_temp[self.feature_name] = merged_df[self.feature_name].values
-            X_temp.drop(columns=["dayofweek", "hour"], inplace=True)
+            X_temp.drop(columns=["profile_key1", "profile_key2"], inplace=True)
             return X_temp
 
         else:
@@ -658,13 +658,13 @@ def add_weekly_profile(data: pd.DataFrame, target: str, aggregation: str = "medi
     # Create weekly profile and align it with the input dataframe
     feature_name = "{}_weekly_profile".format(target)
     df_weekly = data[[target]].groupby([data.index.dayofweek, data.index.hour]).agg(aggregation)
-    df_weekly = df_weekly.assign(dayofweek=df_weekly.index.get_level_values(0),
-                                 hour=df_weekly.index.get_level_values(1))
+    df_weekly = df_weekly.assign(profile_key1=df_weekly.index.get_level_values(0),
+                                 profile_key2=df_weekly.index.get_level_values(1))
     df_weekly.rename(columns={target: feature_name}, inplace=True)
-    data_temp = data.assign(dayofweek=data.index.dayofweek, hour=data.index.hour)
-    merged_df = data_temp.reset_index().merge(df_weekly, on=["dayofweek", "hour"], how="left")
+    data_temp = data.assign(profile_key1=data.index.dayofweek, profile_key2=data.index.hour)
+    merged_df = data_temp.reset_index().merge(df_weekly, on=["profile_key1", "profile_key2"], how="left")
     data_temp[feature_name] = merged_df[feature_name].values
-    data_temp.drop(columns=["dayofweek", "hour"], inplace=True)
+    data_temp.drop(columns=["profile_key1", "profile_key2"], inplace=True)
     return data_temp
 
 
