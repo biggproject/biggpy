@@ -328,16 +328,6 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
             will be passed through.
         """
 
-        default_components = ["season", "quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
-        if components is None:
-            self.components = default_components
-        elif set(components).issubset(default_components):
-            self.components = components
-        else:
-            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(default_components))
-
-        self.encode = encode
-        self.switch_on = switch_on
         self.component_period = {
             "season": 4,
             "quarter": 4,
@@ -348,6 +338,16 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
             "day": 31,
             "dayofyear": 365
         }
+        if components is None:
+            self.components = self.component_period.keys()
+        elif set(components).issubset(self.component_period.keys()):
+            self.components = components
+        else:
+            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(
+                self.component_period.keys()))
+
+        self.encode = encode
+        self.switch_on = switch_on
 
     def fit(self, X, y=None):
         return self
@@ -546,7 +546,6 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    default_components = ["season", "quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
     component_period = {
         "season": 4,
         "quarter": 4,
@@ -559,10 +558,10 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
     }
 
     if calendar_components is not None:
-        if not set(calendar_components).issubset(default_components):
-            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(default_components))
+        if not set(calendar_components).issubset(component_period.keys()):
+            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(component_period.keys()))
     else:
-        calendar_components = default_components
+        calendar_components = component_period.keys()
 
     # Create list of transformers for each column
     transformers = list(
@@ -609,14 +608,14 @@ def add_holiday_component(data: pd.DataFrame, country: str, prov: str = None, st
     return data.assign(holiday=pd.DatetimeIndex(data.index.date).isin(country_holidays).astype(int))
 
 
-def get_calendar_component(data: pd.DataFrame, component: str):
+def get_calendar_component(data: pd.DataFrame, component: str) -> pd.Series:
     """
     Method to avoid the Deprecation Warning when getting some calendar
-    components like week.
+    components like week and to compute season component.
 
     :param data: Dataframe with a DatetimeIndex
     :param component: calendar component
-    :return: index or index.isocalendar() if the component is deprecated
+    :return: calendar component
     """
 
     if component in ['week', 'weekofyear']:
