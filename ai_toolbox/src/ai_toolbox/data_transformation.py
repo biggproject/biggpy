@@ -338,13 +338,14 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
             "day": 31,
             "dayofyear": 365
         }
+        default_components = list(self.component_period.keys())
         if components is None:
-            self.components = self.component_period.keys()
-        elif set(components).issubset(self.component_period.keys()):
+            self.components = default_components
+        elif set(components).issubset(default_components):
             self.components = components
         else:
             raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(
-                self.component_period.keys()))
+                list(default_components)))
 
         self.encode = encode
         self.switch_on = switch_on
@@ -556,12 +557,12 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
         "day": 31,
         "dayofyear": 365
     }
-
+    default_components = list(component_period.keys())
     if calendar_components is not None:
-        if not set(calendar_components).issubset(component_period.keys()):
-            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(component_period.keys()))
+        if not set(calendar_components).issubset(default_components):
+            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(default_components))
     else:
-        calendar_components = component_period.keys()
+        calendar_components = default_components
 
     # Create list of transformers for each column
     transformers = list(
