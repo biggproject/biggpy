@@ -4,15 +4,17 @@
 from datetime import datetime
 from datetime import timedelta
 from itertools import chain
+from typing import Union
 
 import holidays
+import numpy as np
 import pandas as pd
 import pytz
-from numpy import pi, sin, cos
 from pandas.tseries.frequencies import to_offset
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import FunctionTransformer
+from sklearn.utils.validation import check_is_fitted, check_X_y
 
 from ai_toolbox.data_preparation import detect_time_step
 
@@ -89,10 +91,10 @@ def yearly_profile_detection(data, exclude_days=None):
 
     # Get datetime object from columns year, month and day applying to timestamp row wise
     df_group["timestamp"] = df_group.apply(lambda x: to_timestamp(
-            day=x["day"],
-            month=x["month"],
-            year=data.index.year[-1]),
-        axis=1)
+        day=x["day"],
+        month=x["month"],
+        year=data.index.year[-1]),
+                                           axis=1)
 
     # Drop rows with at least one NaT (number of days per month can be different over the years)
     df_group.dropna(axis=0, how='any', inplace=True)
@@ -104,7 +106,8 @@ def yearly_profile_detection(data, exclude_days=None):
     return df_group
 
 
-def weekly_profile_detection(data, exclude_days=None):
+def weekly_profile_detection(
+        data: pd.DataFrame, aggregation: str = 'median', exclude_days: Union[pd.Series, list] = None):
     """
     The function returns the weekly profile of the input time series.
     It aggregates values of the input data over multiple years using
@@ -114,6 +117,7 @@ def weekly_profile_detection(data, exclude_days=None):
     The input series should cover at least two weeks of data.
 
     :param data: Input time series whose weekly profile has to be detected.
+    :param aggregation: Aggregation function to use for the profile.
     :param exclude_days: Time series of days to exclude from the input time series.
     :return: Time series representing the weekly profile, e.g. weekly electricity consumption
             pattern of the input time series at hourly frequency.
@@ -165,10 +169,10 @@ def weekly_profile_detection(data, exclude_days=None):
             mask = pd.Series(data.index.normalize().isin(exclude_days), index=data.index)
             data = data.mask(mask)
         else:
-            raise TypeError("exclude_days argument must be a list of a boolean series of days to exclude.")
+            raise TypeError("exclude_days argument must be a list or a boolean series of days to exclude.")
 
     # Group data first by month and then by day and aggregate by median
-    df_group = data.groupby(by=[data.index.dayofweek, data.index.hour]).median()
+    df_group = data.groupby(by=[data.index.dayofweek, data.index.hour]).agg(aggregation)
 
     # Set names of multiindex columns to identify month and day
     df_group.index.set_names(["dayofweek", "hour"], inplace=True)
@@ -186,11 +190,11 @@ def weekly_profile_detection(data, exclude_days=None):
 
     # Get datetime object from columns year, month and day applying to timestamp row wise
     df_group["timestamp"] = df_group.apply(lambda x: to_timestamp(
-            hour=x["hour"],
-            day=x["day"],
-            month=x["month"],
-            year=x["year"]),
-        axis=1)
+        hour=x["hour"],
+        day=x["day"],
+        month=x["month"],
+        year=x["year"]),
+                                           axis=1)
 
     # Drop rows with at least one NaT (number of days per month can be different over the years)
     df_group.dropna(axis=0, how='any', inplace=True)
@@ -249,8 +253,8 @@ class HolidayTransformer(BaseEstimator, TransformerMixin):
                 country=self.country,
                 prov=self.prov,
                 state=self.state)[X.index.min():X.index.max() + timedelta(days=1)]
-            col_holidays = X.index.normalize().isin(country_holidays).astype(int)
-            return X.assign(holidays=col_holidays)
+            col_holidays = pd.DatetimeIndex(X.index.date).isin(country_holidays).astype(int)
+            return X.assign(holiday=col_holidays)
         else:
             return X
 
@@ -315,7 +319,7 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
         to the input DataFrame.
 
         :param components: List of strings, specifying the calendar components you want to add in
-            ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"].
+            ["season", "quarter", "month", "week", "weekday", "hour", "day", "dayofyear"].
         :param encode: If True, encodes the calendar features into cyclic sin/cosine components.
             For each calendar components, the transformer will generate one sin and one cosine
             component.
@@ -324,17 +328,8 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
             will be passed through.
         """
 
-        default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
-        if components is None:
-            self.components = default_components
-        elif set(components).issubset(default_components):
-            self.components = components
-        else:
-            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(default_components))
-
-        self.encode = encode
-        self.switch_on = switch_on
         self.component_period = {
+            "season": 4,
             "quarter": 4,
             "month": 12,
             "week": 53,
@@ -343,6 +338,17 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
             "day": 31,
             "dayofyear": 365
         }
+        default_components = list(self.component_period.keys())
+        if components is None:
+            self.components = default_components
+        elif set(components).issubset(default_components):
+            self.components = components
+        else:
+            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(
+                list(default_components)))
+
+        self.encode = encode
+        self.switch_on = switch_on
 
     def fit(self, X, y=None):
         return self
@@ -360,19 +366,84 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
                 encoded_components = {
                     k: v for component in self.components for k, v in
                     (
-                        ('{}_sin'.format(component), sin(getattr(get_index_calendar(X, component), component) /
-                                                         self.component_period[component] * 2 * pi)),
-                        ('{}_cos'.format(component), cos(getattr(get_index_calendar(X, component), component) /
-                                                         self.component_period[component] * 2 * pi))
+                        ('{}_sin'.format(component), np.sin(get_calendar_component(X, component) /
+                                                            self.component_period[component] * 2 * np.pi)),
+                        ('{}_cos'.format(component), np.cos(get_calendar_component(X, component) /
+                                                            self.component_period[component] * 2 * np.pi))
                     )
                 }
                 return X.assign(**encoded_components)
 
             else:
                 return X.assign(**{
-                    '{}'.format(component): getattr(get_index_calendar(X, component), component)
+                    '{}'.format(component): get_calendar_component(X, component)
                     for component in self.components
                 })
+        else:
+            return X
+
+
+class WeeklyProfileTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transformer version of the function add_weekly_profile, to be used with
+    sklearn Pipelines.
+    """
+
+    def __init__(self, aggregation: str = "median", switch_on: bool = True):
+        """
+        Adds calendar components quarter, month, week, day, hour
+        to the input DataFrame.
+
+        :param aggregation: aggregation function to use for the profile
+        :param switch_on: Can be used to enable or disable the transformation.
+            Useful in the hyperparameter optimization. If False, the input data
+            will be passed through.
+        """
+
+        self.aggregation = aggregation
+        self.feature_name = ""
+        self.switch_on = switch_on
+        self.profile_ = None
+
+    def fit(self, X, y=None):
+
+        check_X_y(X, y, ensure_2d=False)
+
+        # Check input data before computing profile
+
+        if isinstance(y, pd.Series):
+            y = y.to_frame()
+
+        if not isinstance(X.index, pd.DatetimeIndex) or not isinstance(y.index, pd.DatetimeIndex):
+            raise ValueError("Input must be a pandas DataFrame or Series with a DateTimeIndex.")
+
+        elif y.index.isocalendar().week.nunique() < 2:
+            raise ValueError("Input time series must cover at least two weeks to get a weekly profile.")
+
+        # Create weekly profile and align it with the input dataframe
+        self.profile_ = y.groupby([y.index.dayofweek, y.index.hour]).agg(self.aggregation)
+        self.feature_name = "{}_weekly_profile".format(self.profile_.columns[0])
+        self.profile_.rename(columns={self.profile_.columns[0]: self.feature_name}, inplace=True)
+        self.profile_ = self.profile_.assign(profile_key1=self.profile_.index.get_level_values(0),
+                                             profile_key2=self.profile_.index.get_level_values(1))
+        return self
+
+    def transform(self, X) -> pd.DataFrame:
+        """
+        :param X:  input DataFrame with a DateTimeIndex.
+        :return: new DataFrame with the added weekly profile.
+        """
+
+        check_is_fitted(self)
+        if self.switch_on is True:
+            if isinstance(X, pd.Series):
+                X = X.to_frame()
+            X_temp = X.assign(profile_key1=X.index.dayofweek, profile_key2=X.index.hour)
+            merged_df = X_temp.reset_index().merge(self.profile_, on=["profile_key1", "profile_key2"], how="left")
+            X_temp[self.feature_name] = merged_df[self.feature_name].values
+            X_temp.drop(columns=["profile_key1", "profile_key2"], inplace=True)
+            return X_temp
+
         else:
             return X
 
@@ -418,7 +489,7 @@ def add_calendar_components(data: pd.DataFrame,
 
     :param data: input DataFrame with a DateTimeIndex and at least one column.
     :param calendar_components: List of strings, specifying the calendar components you want to add in
-        ["year", "quarter", "month", "week", "day", "hour"].
+        ["season", "quarter", "month", "week", "weekday", "hour", "day", "dayofyear"].
     :param drop_constant_columns: If True, drops constant calendar components.
     :return: new DataFrame with the added calendar components.
     """
@@ -426,7 +497,7 @@ def add_calendar_components(data: pd.DataFrame,
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
+    default_components = ["season", "quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
 
     if calendar_components is not None:
         if not set(calendar_components).issubset(default_components):
@@ -435,7 +506,7 @@ def add_calendar_components(data: pd.DataFrame,
         calendar_components = default_components
 
     df_new = data.assign(**{
-        '{}'.format(component): getattr(get_index_calendar(data, component), component)
+        '{}'.format(component): get_calendar_component(data, component)
         for component in calendar_components
     })
 
@@ -474,16 +545,16 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
     """
 
     def sin_transformer(period):
-        return FunctionTransformer(lambda x: sin(x / period * 2 * pi))
+        return FunctionTransformer(lambda x: np.sin(x / period * 2 * np.pi))
 
     def cos_transformer(period):
-        return FunctionTransformer(lambda x: cos(x / period * 2 * pi))
+        return FunctionTransformer(lambda x: np.cos(x / period * 2 * np.pi))
 
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    default_components = ["quarter", "month", "week", "weekday", "hour", "day", "dayofyear"]
     component_period = {
+        "season": 4,
         "quarter": 4,
         "month": 12,
         "week": 53,
@@ -492,7 +563,7 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
         "day": 31,
         "dayofyear": 365
     }
-
+    default_components = list(component_period.keys())
     if calendar_components is not None:
         if not set(calendar_components).issubset(default_components):
             raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(default_components))
@@ -541,22 +612,67 @@ def add_holiday_component(data: pd.DataFrame, country: str, prov: str = None, st
         prov=prov,
         state=state)[data.index.min():data.index.max() + timedelta(days=1)]
 
-    return data.assign(holiday=data.index.normalize().isin(country_holidays).astype(int))
+    return data.assign(holiday=pd.DatetimeIndex(data.index.date).isin(country_holidays).astype(int))
 
 
-def get_index_calendar(data: pd.DataFrame, component: str):
+def get_calendar_component(data: pd.DataFrame, component: str) -> pd.Series:
     """
     Method to avoid the Deprecation Warning when getting some calendar
-    components like week.
+    components like week and to compute season component.
 
     :param data: Dataframe with a DatetimeIndex
     :param component: calendar component
-    :return: index or index.isocalendar() if the component is deprecated
+    :return: calendar component
     """
-    if component in ['week']:
-        return data.index.isocalendar()
+
+    if component in ['week', 'weekofyear']:
+        return getattr(data.index.isocalendar(), component)
+    elif component == 'season':
+        return data.index.month % 12 // 3 + 1
     else:
-        return data.index
+        return getattr(data.index, component)
+
+
+def add_weekly_profile(data: pd.DataFrame, target: str, aggregation: str = "median") -> pd.DataFrame:
+    """
+    Detects the weekly profile of the target feature, aligning it with the
+    the other data and repeating it for the entire time range.
+    :param data: input Dataframe
+    :param target: target feature for the weekly profile
+    :param aggregation: aggregation function to use for the profile
+    :return: DataFrame with the weekly profile included
+    """
+
+    # Check input data before computing profile
+    if target not in data.columns:
+        raise KeyError("Feature '{}' not found in columns.".format(target))
+    elif data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
+        raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
+
+    elif detect_time_step(data[[target]])[0] is None:
+        raise ValueError("Impossible to determine the frequency of the input time series.")
+
+    elif data.index.isocalendar().week.nunique() < 2:
+        raise ValueError("Input time series must cover at least two weeks to get a weekly profile.")
+
+    try:
+        frq_cmp = to_offset(detect_time_step(data[[target]])[0]) > to_offset('1H')
+        if frq_cmp:
+            raise ValueError("The frequency of the input time series must be not lower than '1H'.")
+    except TypeError:
+        raise ValueError("The frequency of the input time series must be not lower than '1H'.")
+
+    # Create weekly profile and align it with the input dataframe
+    feature_name = "{}_weekly_profile".format(target)
+    df_weekly = data[[target]].groupby([data.index.dayofweek, data.index.hour]).agg(aggregation)
+    df_weekly = df_weekly.assign(profile_key1=df_weekly.index.get_level_values(0),
+                                 profile_key2=df_weekly.index.get_level_values(1))
+    df_weekly.rename(columns={target: feature_name}, inplace=True)
+    data_temp = data.assign(profile_key1=data.index.dayofweek, profile_key2=data.index.hour)
+    merged_df = data_temp.reset_index().merge(df_weekly, on=["profile_key1", "profile_key2"], how="left")
+    data_temp[feature_name] = merged_df[feature_name].values
+    data_temp.drop(columns=["profile_key1", "profile_key2"], inplace=True)
+    return data_temp
 
 
 def crange(start: int, end: int, length: int, include_zero=True):
@@ -601,19 +717,4 @@ if __name__ == '__main__':
     This module is not supposed to run as a stand-alone module.
     This part below is only for testing purposes. 
     """
-    from os.path import dirname, join, realpath, pardir
-    import matplotlib.pyplot as plt
 
-    # Load time series for profile (dataframe) from csv
-    dir_path = dirname(realpath(__file__))
-    filename = join(dir_path, pardir, pardir, "tests", "fixtures", "df_weekly_profile.csv")
-    profile_data = pd.read_csv(
-        filename,
-        sep=',',
-        parse_dates=True,
-        infer_datetime_format=True,
-        index_col=0)
-
-    profile = weekly_profile_detection(profile_data)
-    profile.plot(ylim=(15, 30), figsize=(10, 10)).grid(which='major', axis='both', linestyle='--')
-    plt.show()

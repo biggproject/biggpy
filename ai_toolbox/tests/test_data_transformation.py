@@ -67,6 +67,8 @@ class TestDataTransformation(unittest.TestCase):
             columns=["n1", "n2"]
         )
 
+        idx = pd.date_range(start='2021/10/28', end='2021/11/15', tz=pytz.utc, freq='D')
+        cls.df_holidays = pd.DataFrame(data=np.random.randint(0, 10), index=idx, columns=['n1'])
     # yearly_profile_detection tests below
 
     def test_yearly_profile_detection_raises_if_empty_series(self):
@@ -194,7 +196,8 @@ class TestDataTransformation(unittest.TestCase):
     def test_weekly_profile_detection_raises_if_exclude_days_wrong_type(self):
         """ Test that weekly_profile_detection raises if exclude_days is of the wrong type """
 
-        self.assertRaises(TypeError, data_transformation.weekly_profile_detection, self.weekly_profile, "wrong_type")
+        self.assertRaises(TypeError, data_transformation.weekly_profile_detection,
+                          self.weekly_profile, "mean", "wrong_type")
 
     def test_weekly_profile_detection_ok_if_exclude_days_list(self):
         """
@@ -213,7 +216,7 @@ class TestDataTransformation(unittest.TestCase):
             pd.date_range(start="2020-09-27", freq='1H', tz=pytz.utc, periods=24))
         assert_frame_equal(
             data_transformation.weekly_profile_detection(
-                self.weekly_profile, exclude_days=exclude_days),
+                self.weekly_profile, aggregation="median", exclude_days=exclude_days),
             df_result_exclude,
             check_exact=False,
             check_dtype=False)
@@ -230,7 +233,7 @@ class TestDataTransformation(unittest.TestCase):
         df_result_exclude = self.result_weekly_profile.drop(
             pd.date_range(start="2020-09-27", freq='1H', tz=pytz.utc, periods=24))
         assert_frame_equal(
-            data_transformation.weekly_profile_detection(self.weekly_profile, series_exclude),
+            data_transformation.weekly_profile_detection(self.weekly_profile, "median", series_exclude),
             df_result_exclude,
             check_exact=False,
             check_dtype=False)
@@ -305,7 +308,7 @@ class TestDataTransformation(unittest.TestCase):
     def test_add_calendar_components_transformer_returns_same_results_as_function(self):
         """ Test that calendar component transformer and add_calendar_components return same results """
 
-        calendar_components = ['month', 'day']
+        calendar_components = None
 
         assert_frame_equal(
             data_transformation.add_calendar_components(
@@ -338,23 +341,47 @@ class TestDataTransformation(unittest.TestCase):
             check_exact=False,
             check_dtype=False)
 
-    def test_crange_returns_expected_result_if_start_lower_than_end(self):
-        """ Test that crange returns expected result if start lower than end """
+    def test_add_holiday_component_returns_expected_result(self):
+        """ Test that holidays returns expected results """
 
-        self.assertEqual(list(data_transformation.crange(3, 9, 12, include_zero=False)), [*range(3, 9)])
-        self.assertEqual(list(data_transformation.crange(0, 5, 7, include_zero=True)), [*range(0, 5)])
+        df_holidays = data_transformation.add_holiday_component(self.df_holidays, country='BE')
+        self.assertEqual(df_holidays.holiday.to_list(), [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0])
 
-    def test_crange_returns_expected_result_if_start_greater_than_end(self):
-        """ Test that crange returns expected result if start greater than end"""
+    def test_holiday_transformer_returns_expected_result(self):
+        """ Test that holidays returns expected results """
 
-        self.assertEqual(list(data_transformation.crange(10, 4, 12, include_zero=False)), [10, 11, 12, 1, 2, 3])
-        self.assertEqual(list(data_transformation.crange(20, 3, 24, include_zero=True)), [*range(20, 24)] + [0, 1, 2])
+        df_holidays = data_transformation.HolidayTransformer(country='BE').fit_transform(self.df_holidays)
+        self.assertEqual(df_holidays.holiday.to_list(), [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0])
 
-    def test_crange_returns_expected_result_if_start_equal_end(self):
-        """ Test that crange returns expected result if start is equal to end """
+    def test_add_weekly_profile_returns_expected_result(self):
+        """ Test that add_weekly_profile returns expected result """
 
-        self.assertEqual(list(data_transformation.crange(4, 4, 7, include_zero=True)), [4, 5, 6, 0, 1, 2, 3])
-        self.assertEqual(list(data_transformation.crange(4, 4, 6, include_zero=False)), [4, 5, 6, 1, 2, 3])
+        idx = pd.date_range(start='2021/12/01', periods=24*14, tz=pytz.utc, freq='1H')
+        df_weekly = pd.DataFrame(index=idx, data={"data": [1]*24*7 + [2]*24*7})
+        result = data_transformation.add_weekly_profile(df_weekly, "data", "mean")
+        self.assertEqual(
+            result["data_weekly_profile"].to_list(),
+            [1.5]*24*14
+        )
+
+    def test_weekly_profile_transformers_returns_expected_result(self):
+        """ Test that WeeklyProfileTransformer returns expected result """
+
+        idx = pd.date_range(start='2021/12/01', periods=24*14, tz=pytz.utc, freq='1H')
+        df_weekly = pd.DataFrame(index=idx, data={"data": [1]*24*7 + [2]*24*7})
+        result = data_transformation.WeeklyProfileTransformer(aggregation="mean").fit_transform(
+            df_weekly["data"], df_weekly["data"])
+        self.assertEqual(
+            result["data_weekly_profile"].to_list(),
+            [1.5]*24*14
+        )
+
+    def test_add_weekly_profile_raises_if_target_not_in_columns(self):
+        """ Test that add_weekly_profile raises if target is not in columns """
+
+        idx = pd.date_range(start='2021/12/01', periods=24*14, tz=pytz.utc, freq='1H')
+        df_weekly = pd.DataFrame(index=idx, data={"data": [1]*24*7 + [2]*24*7})
+        self.assertRaises(KeyError, data_transformation.add_weekly_profile, df_weekly, "x", "mean")
 
     @classmethod
     def tearDownClass(cls):
