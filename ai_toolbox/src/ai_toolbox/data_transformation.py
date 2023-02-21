@@ -1,22 +1,22 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-
+import typing
 from datetime import datetime
 from datetime import timedelta
 from itertools import chain
-from typing import Union
+from typing import Union, Tuple
 
 import holidays
 import numpy as np
 import pandas as pd
 import pytz
+from ai_toolbox.data_preparation import detect_time_step
 from pandas.tseries.frequencies import to_offset
+from scipy import optimize
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.utils.validation import check_is_fitted, check_X_y
-
-from ai_toolbox.data_preparation import detect_time_step
 
 
 def yearly_profile_detection(data, exclude_days=None):
@@ -517,10 +517,157 @@ def add_calendar_components(data: pd.DataFrame,
     return df_new
 
 
-def add_degree_days_component(data: pd.DataFrame,
-                              base_temperature: float = None,
-                              mode: str = "heating") -> pd.DataFrame:
-    """  """
+def add_degree_days_component(
+        data: pd.DataFrame,
+        base_temperature: typing.Union[float, dict] = None,
+        temperature_column: str = "OutdoorTemperature",
+        energy_consumption_column: str = "EnergyConsumptionGridElectricity",
+        mode: str = None) -> pd.DataFrame:
+    """
+    This function adds the 'degree days' feature to the input DataFrame, which
+    improves the performances of linear models when predicting energy consumption.
+    Degree days are used to linearize the relationship between energy demand and outdoor temperature.
+    The input data must have hourly or daily frequency. If the auto mode is selected (mode=None, default),
+    the function will determine automatically the best balance point temperature for both hdd and cdd and
+    add the two features to the input dataframe.
+
+    :param data: DataFrame with DateTime index having hourly or daily frequency.
+    :param base_temperature: Balance Point Temperature (BPT) used in the calculation. Heating (heating mode)
+     is required by the building when the outdoor temperature goes below BPT. Cooling (cooling mode) is required
+     by the building when the outdoor temperature is greater than the BPT.
+     If a float value is provided, this will be used as balance point temperature both for hdd and cdd.
+     If a dict is provided, this must be for example: {'hdd': 15, 'cdd': 17}.
+    :param temperature_column: name of the column with the temperature data
+    :param energy_consumption_column: name of the column with the energy consumption data
+    :param mode: is 'heating' for winter, 'cooling' for summer, None for the auto mode
+    """
+
+    if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
+        raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
+
+    if mode not in ["heating", "cooling", None]:
+        raise ValueError("Mode for degree days must be heating or cooling or mixed.")
+
+    time_step = detect_time_step(data[temperature_column])[0]
+    if time_step not in ['H', 'D']:
+        raise ValueError("Input series must have hourly ('H') or daily ('D') granularity.")
+
+    time_step_adj = {
+        'H': 24,
+        'D': 1
+    }
+    cdd, hdd, bpt = None, None, base_temperature
+    if mode == 'heating' or mode is None:
+        if base_temperature is None:
+            bpt, _ = optimize_balance_point_temperature(
+                data=data,
+                mode='heating',
+                temperature_column=temperature_column,
+                energy_consumption_column=energy_consumption_column
+            )
+        elif isinstance(base_temperature, dict):
+            bpt = base_temperature['hdd']
+
+        hdd = np.maximum(0, (bpt - data[temperature_column]) / time_step_adj[time_step])
+        if mode == "heating":
+            return data.assign(hdd=hdd)
+    if mode == 'cooling' or mode is None:
+        if base_temperature is None:
+            bpt, _ = optimize_balance_point_temperature(
+                data=data,
+                mode='cooling',
+                temperature_column=temperature_column,
+                energy_consumption_column=energy_consumption_column
+            )
+        elif isinstance(base_temperature, dict):
+            bpt = base_temperature['cdd']
+
+        cdd = np.maximum(0, (data[temperature_column] - bpt) / time_step_adj[time_step])
+        if mode == 'cooling':
+            return data.assign(cdd=cdd)
+    if mode is None:
+        return data.assign(hdd=hdd, cdd=cdd)
+
+
+def optimize_balance_point_temperature(
+        data: pd.DataFrame,
+        mode: str = "heating",
+        temperature_column: str = "OutdoorTemperature",
+        energy_consumption_column: str = "EnergyConsumptionGridElectricity"
+) -> Tuple[np.ndarray, float]:
+    """
+    This function finds the optimal value of the balance
+    point temperature to use in the degree days features.
+
+    :param data: input DataFrame, with a column of outdoor temperatures
+    :param mode: is 'heating' for winter, 'cooling' for summer
+    :param temperature_column: name of the column with the temperature data
+    :param energy_consumption_column: name of the column with the energy consumption data
+    :return: a tuple containing the solution of the optimization and the function value (correlation)
+    """
+
+    if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
+        raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
+
+    if mode not in ["heating", "cooling"]:
+        raise ValueError("Mode for degree days must be heating or cooling.")
+
+    time_step = detect_time_step(data[temperature_column])[0]
+
+    if time_step not in ['H', 'D']:
+        raise ValueError("Input series must have hourly ('H') or daily ('D') granularity.")
+
+    bpt_range = None
+    if mode == 'heating':
+        bpt_range = (slice(5, 18, 1),)
+    elif mode == 'cooling':
+        bpt_range = (slice(10, 25, 1),)
+
+    sol, fval, _, _ = optimize.brute(
+        func=compute_dd_correlation,
+        args=(data, mode, temperature_column, energy_consumption_column, time_step),
+        workers=-1,
+        ranges=bpt_range,
+        disp=True,
+        finish=None,
+        full_output=True)
+    return sol, fval
+
+
+def compute_dd_correlation(
+        bpt: np.ndarray,
+        data: pd.DataFrame,
+        mode: str = "heating",
+        temperature_column: str = "OutdoorTemperature",
+        energy_consumption_column: str = "EnergyConsumptionGridElectricity",
+        time_step: str = 'H') -> float:
+    """
+    Function to optimize. It is used to compute the degree days correlation with
+    the energy consumption series. The goal is to find the bpt that returns
+    the maximum between the two series.
+
+    :param bpt: balance point temperature
+    :param data: input DataFrame, with a column of outdoor temperatures
+    :param mode: is 'heating' for winter, 'cooling' for summer
+    :param temperature_column: name of the column with the temperature data
+    :param energy_consumption_column: name of the column with the energy consumption data
+    :param time_step: time step of the series, 'H' or 'D'
+    :return: the negated absolute value of the correlation between the energy consumption
+     series and the degree days. It is negated because we want to maximize the correlation.
+    """
+    time_step_adj = {
+        'H': 24,
+        'D': 1
+    }
+
+    if mode == "heating":
+        hdd = np.maximum(0, (bpt[0] - data[temperature_column]) / time_step_adj[time_step])
+        return -abs(data[energy_consumption_column].corr(hdd))
+    elif mode == "cooling":
+        cdd = np.maximum(0, (data[temperature_column] - bpt[0]) / time_step_adj[time_step])
+        return -abs(data[energy_consumption_column].corr(cdd))
+    else:
+        raise ValueError("Mode for degree days must be heating or cooling.")
 
 
 def trigonometric_encode_calendar_components(data, calendar_components=None, remainder='passthrough', drop=True):
@@ -677,7 +824,7 @@ def add_weekly_profile(data: pd.DataFrame, target: str, aggregation: str = "medi
 
 def crange(start: int, end: int, length: int, include_zero=True):
     """
-    Generated a circular range given a start point, an end and
+    Generates a circular range given a start point, an end and
     the length of the array.
     For example, it can be used to generate calendar ranges for
     arrays representing the days of the weeks, the hours of the
@@ -717,4 +864,24 @@ if __name__ == '__main__':
     This module is not supposed to run as a stand-alone module.
     This part below is only for testing purposes. 
     """
+    from os.path import join
 
+    dataset_dir = "/home/rick/Coding/Notebooks/datasets"
+    filename = join(dataset_dir, "asset_168_20230131162237.csv")
+    df = pd.read_csv(
+        filename,
+        sep=',',
+        parse_dates=True,
+        infer_datetime_format=True,
+        index_col=0,
+        dayfirst=True)
+    df.index.name = "timestamp"
+    df = df.loc['2019-01-01 22:00': '2022-12-31']
+    df.rename(columns={"168_electricity_consumption.actual": "EnergyConsumptionGridElectricity",
+                       "168_heating_degree_hours.actual": "HDH", "168_cooling_degree_hours.actual": "CDH",
+                       "168_occupancy_hourly.actual": "occupancy",
+                       "168_external_temperature.actual": "OutdoorTemperature"}, inplace=True)
+    target = "EnergyConsumptionGridElectricity"
+
+    print("BPT cooling: {}".format(optimize_balance_point_temperature(data=df, mode="cooling")))
+    print("BPT heating: {}".format(optimize_balance_point_temperature(data=df, mode="heating")))
