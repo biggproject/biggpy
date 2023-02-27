@@ -391,8 +391,6 @@ class WeeklyProfileTransformer(BaseEstimator, TransformerMixin):
 
     def __init__(self, aggregation: str = "median", switch_on: bool = True):
         """
-        Adds calendar components quarter, month, week, day, hour
-        to the input DataFrame.
 
         :param aggregation: aggregation function to use for the profile
         :param switch_on: Can be used to enable or disable the transformation.
@@ -442,6 +440,118 @@ class WeeklyProfileTransformer(BaseEstimator, TransformerMixin):
             merged_df = X_temp.reset_index().merge(self.profile_, on=["profile_key1", "profile_key2"], how="left")
             X_temp[self.feature_name] = merged_df[self.feature_name].values
             X_temp.drop(columns=["profile_key1", "profile_key2"], inplace=True)
+            return X_temp
+
+        else:
+            return X
+
+
+class DegreeDaysTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transformer version of the function add_degree_days_component, to be used with
+    sklearn Pipelines.
+    """
+
+    def __init__(
+            self,
+            base_temperature: typing.Union[float, dict] = 15,
+            temperature_column: str = "OutdoorTemperature",
+            mode: str = None,
+            switch_on: bool = True):
+        """
+        This function adds the 'degree days' feature to the input DataFrame, which improves the performances of
+        linear models when predicting energy consumption. Degree days are used to linearize the relationship between
+        energy demand and outdoor temperature. The input data must have hourly or daily frequency.
+
+        :param base_temperature: Balance Point Temperature (BPT) used in the calculation. Heating (heating mode)
+         is required by the building when the outdoor temperature goes below BPT. Cooling (cooling mode) is required
+         by the building when the outdoor temperature is greater than the BPT.
+         If a float value is provided, this will be used as balance point temperature both for HeatingDegreeDays and
+          CoolingDegreeDays.
+         If a dict is provided, this must be for example: {'HeatingDegreeDays': 15, 'CoolingDegreeDays': 17}.
+        :param temperature_column: name of the column with the temperature data
+        :param mode: is 'heating' for winter, 'cooling' for summer, None to add both features.
+        :param switch_on: Can be used to enable or disable the transformation.
+            Useful in the hyperparameter optimization. If False, the input data
+            will be passed through.
+        """
+
+        self.base_temperature = base_temperature
+        self.temperature_column = temperature_column
+        self.mode = mode
+        self.switch_on = switch_on
+
+        if isinstance(base_temperature, dict):
+            self.hdd_bpt_, self.cdd_bpt_ = base_temperature["HeatingDegreeDays"], base_temperature["CoolingDegreeDays"]
+        elif isinstance(base_temperature, (float, int)):
+            self.hdd_bpt_, self.cdd_bpt_ = base_temperature, base_temperature
+        else:
+            raise TypeError("Base temperature for degree days must be dict, int or float.")
+
+        self.X_time_step_ = ''
+        self.y_time_step_ = ''
+        self._time_step_adj = {
+            'H': 24,
+            'D': 1
+        }
+
+    def fit(self, X, y=None):
+        """
+        Fit the transformer to the input data.
+
+        :param X: Must contain a column with an outdoor temperature time series.
+        :param y: Must be an energy consumption time series.
+        :return:
+        """
+
+        check_X_y(X, y, ensure_2d=False)
+
+        # Check input data before computing degree days
+
+        if self.temperature_column not in X.columns:
+            raise ValueError("{} not found in X columns.".format(
+                self.temperature_column))
+
+        if not isinstance(X.index, pd.DatetimeIndex) or not isinstance(y.index, pd.DatetimeIndex):
+            raise ValueError("Input must be a pandas DataFrame or Series with a DateTimeIndex.")
+
+        self.X_time_step_ = detect_time_step(y)[0]
+        self.y_time_step_ = detect_time_step(y)[0]
+
+        if self.X_time_step_ != self.y_time_step_:
+            raise ValueError("X and y must have the same time step: X time step is '{}', y time step is '{}'.")
+
+        if self.y_time_step_ not in ['H', 'D']:
+            raise ValueError("Input data must have hourly ('H') or daily ('D') granularity.")
+
+        if isinstance(self.base_temperature, dict):
+            self.hdd_bpt_ = self.base_temperature['HeatingDegreeDays']
+            self.cdd_bpt_ = self.base_temperature['CoolingDegreeDays']
+
+        return self
+
+    def transform(self, X) -> pd.DataFrame:
+
+        check_is_fitted(self)
+        if self.switch_on is True:
+            if isinstance(X, pd.Series):
+                X = X.to_frame()
+
+            if self.mode == 'heating':
+                HeatingDegreeDays = np.maximum(0, (self.hdd_bpt_ -
+                                                   X[self.temperature_column]) / self._time_step_adj[self.X_time_step_])
+                X_temp = X.assign(HeatingDegreeDays=HeatingDegreeDays)
+            elif self.mode == 'cooling':
+                CoolingDegreeDays = np.maximum(0, (X[self.temperature_column]
+                                                   - self.cdd_bpt_) / self._time_step_adj[self.X_time_step_])
+                X_temp = X.assign(CoolingDegreeDays=CoolingDegreeDays)
+            else:
+                CoolingDegreeDays = np.maximum(0, (X[self.temperature_column] - self.cdd_bpt_)
+                                               / self._time_step_adj[self.X_time_step_])
+                HeatingDegreeDays = np.maximum(0, (self.hdd_bpt_ - X[self.temperature_column]) /
+                                               self._time_step_adj[self.X_time_step_])
+                X_temp = X.assign(HeatingDegreeDays=HeatingDegreeDays, CoolingDegreeDays=CoolingDegreeDays)
+
             return X_temp
 
         else:
@@ -517,6 +627,57 @@ def add_calendar_components(data: pd.DataFrame,
     return df_new
 
 
+def optimize_balance_point_temperature(
+        outdoor_temperature_data: pd.Series,
+        energy_consumption_data: pd.Series,
+        mode: str = "heating",
+        time_step: str = "H",
+) -> Tuple[np.ndarray, float]:
+    """
+    This function finds the optimal value of the balance
+    point temperature to use in the degree days features.
+
+    :param outdoor_temperature_data: input Series of outdoor temperatures
+    :param energy_consumption_data: input Series of energy consumptions
+    :param mode: is 'heating' for winter, 'cooling' for summer
+    :param time_step: frequency of the two series, 'H' or 'D'
+    :return: a tuple containing the solution of the optimization and the function value (correlation)
+    """
+
+    # Validation
+    if any((
+            energy_consumption_data.empty,
+            outdoor_temperature_data.empty,
+            not isinstance(energy_consumption_data, pd.Series),
+            not isinstance(outdoor_temperature_data, pd.Series),
+            not isinstance(energy_consumption_data.index, pd.DatetimeIndex),
+            not isinstance(outdoor_temperature_data.index, pd.DatetimeIndex)
+    )):
+        raise ValueError("Input must be a non-empty pandas Series with a DateTimeIndex.")
+
+    if mode not in ["heating", "cooling"]:
+        raise ValueError("Mode for degree days must be either heating or cooling.")
+
+    if time_step not in ['H', 'D']:
+        raise ValueError("Input series must have hourly ('H') or daily ('D') granularity.")
+
+    bpt_range = None
+    if mode == 'heating':
+        bpt_range = (slice(5, 18, 1),)
+    elif mode == 'cooling':
+        bpt_range = (slice(10, 25, 1),)
+
+    sol, fval, _, _ = optimize.brute(
+        func=compute_dd_correlation,
+        args=(outdoor_temperature_data, energy_consumption_data, mode, time_step),
+        workers=-1,
+        ranges=bpt_range,
+        disp=True,
+        finish=None,
+        full_output=True)
+    return sol, fval
+
+
 def add_degree_days_component(
         data: pd.DataFrame,
         base_temperature: typing.Union[float, dict] = None,
@@ -528,15 +689,16 @@ def add_degree_days_component(
     improves the performances of linear models when predicting energy consumption.
     Degree days are used to linearize the relationship between energy demand and outdoor temperature.
     The input data must have hourly or daily frequency. If the auto mode is selected (mode=None, default),
-    the function will determine automatically the best balance point temperature for both hdd and cdd and
-    add the two features to the input dataframe.
+    the function will determine automatically the best balance point temperature for both HeatingDegreeDays
+     and CoolingDegreeDays and add the two features to the input dataframe.
 
     :param data: DataFrame with DateTime index having hourly or daily frequency.
     :param base_temperature: Balance Point Temperature (BPT) used in the calculation. Heating (heating mode)
      is required by the building when the outdoor temperature goes below BPT. Cooling (cooling mode) is required
      by the building when the outdoor temperature is greater than the BPT.
-     If a float value is provided, this will be used as balance point temperature both for hdd and cdd.
-     If a dict is provided, this must be for example: {'hdd': 15, 'cdd': 17}.
+     If a float value is provided, this will be used as balance point temperature both for HeatingDegreeDays
+     and CoolingDegreeDays.
+     If a dict is provided, this must be for example: {'HeatingDegreeDays': 15, 'CoolingDegreeDays': 17}.
     :param temperature_column: name of the column with the temperature data
     :param energy_consumption_column: name of the column with the energy consumption data
     :param mode: is 'heating' for winter, 'cooling' for summer, None for the auto mode
@@ -556,102 +718,53 @@ def add_degree_days_component(
         'H': 24,
         'D': 1
     }
-    cdd, hdd, bpt = None, None, base_temperature
+    CoolingDegreeDays, HeatingDegreeDays, bpt = None, None, base_temperature
     if mode == 'heating' or mode is None:
         if base_temperature is None:
             bpt, _ = optimize_balance_point_temperature(
-                data=data,
+                energy_consumption_data=data[energy_consumption_column],
+                outdoor_temperature_data=data[temperature_column],
                 mode='heating',
-                temperature_column=temperature_column,
-                energy_consumption_column=energy_consumption_column
             )
         elif isinstance(base_temperature, dict):
-            bpt = base_temperature['hdd']
+            bpt = base_temperature['HeatingDegreeDays']
 
-        hdd = np.maximum(0, (bpt - data[temperature_column]) / time_step_adj[time_step])
+        HeatingDegreeDays = np.maximum(0, (bpt - data[temperature_column]) / time_step_adj[time_step])
         if mode == "heating":
-            return data.assign(hdd=hdd)
+            return data.assign(HeatingDegreeDays=HeatingDegreeDays)
     if mode == 'cooling' or mode is None:
         if base_temperature is None:
             bpt, _ = optimize_balance_point_temperature(
-                data=data,
+                energy_consumption_data=data[energy_consumption_column],
+                outdoor_temperature_data=data[temperature_column],
                 mode='cooling',
-                temperature_column=temperature_column,
-                energy_consumption_column=energy_consumption_column
             )
         elif isinstance(base_temperature, dict):
-            bpt = base_temperature['cdd']
+            bpt = base_temperature['CoolingDegreeDays']
 
-        cdd = np.maximum(0, (data[temperature_column] - bpt) / time_step_adj[time_step])
+        CoolingDegreeDays = np.maximum(0, (data[temperature_column] - bpt) / time_step_adj[time_step])
         if mode == 'cooling':
-            return data.assign(cdd=cdd)
+            return data.assign(CoolingDegreeDays=CoolingDegreeDays)
     if mode is None:
-        return data.assign(hdd=hdd, cdd=cdd)
-
-
-def optimize_balance_point_temperature(
-        data: pd.DataFrame,
-        mode: str = "heating",
-        temperature_column: str = "OutdoorTemperature",
-        energy_consumption_column: str = "EnergyConsumptionGridElectricity"
-) -> Tuple[np.ndarray, float]:
-    """
-    This function finds the optimal value of the balance
-    point temperature to use in the degree days features.
-
-    :param data: input DataFrame, with a column of outdoor temperatures
-    :param mode: is 'heating' for winter, 'cooling' for summer
-    :param temperature_column: name of the column with the temperature data
-    :param energy_consumption_column: name of the column with the energy consumption data
-    :return: a tuple containing the solution of the optimization and the function value (correlation)
-    """
-
-    if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
-        raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
-
-    if mode not in ["heating", "cooling"]:
-        raise ValueError("Mode for degree days must be heating or cooling.")
-
-    time_step = detect_time_step(data[temperature_column])[0]
-
-    if time_step not in ['H', 'D']:
-        raise ValueError("Input series must have hourly ('H') or daily ('D') granularity.")
-
-    bpt_range = None
-    if mode == 'heating':
-        bpt_range = (slice(5, 18, 1),)
-    elif mode == 'cooling':
-        bpt_range = (slice(10, 25, 1),)
-
-    sol, fval, _, _ = optimize.brute(
-        func=compute_dd_correlation,
-        args=(data, mode, temperature_column, energy_consumption_column, time_step),
-        workers=-1,
-        ranges=bpt_range,
-        disp=True,
-        finish=None,
-        full_output=True)
-    return sol, fval
+        return data.assign(HeatingDegreeDays=HeatingDegreeDays, CoolingDegreeDays=CoolingDegreeDays)
 
 
 def compute_dd_correlation(
         bpt: np.ndarray,
-        data: pd.DataFrame,
+        outdoor_temperature_data: pd.Series,
+        energy_consumption_data: pd.Series,
         mode: str = "heating",
-        temperature_column: str = "OutdoorTemperature",
-        energy_consumption_column: str = "EnergyConsumptionGridElectricity",
-        time_step: str = 'H') -> float:
+        time_step: str = "H") -> float:
     """
     Function to optimize. It is used to compute the degree days correlation with
     the energy consumption series. The goal is to find the bpt that returns
     the maximum between the two series.
 
     :param bpt: balance point temperature
-    :param data: input DataFrame, with a column of outdoor temperatures
+    :param energy_consumption_data: input Series of energy consumptions
+    :param outdoor_temperature_data: input Series of outdoor temperatures
     :param mode: is 'heating' for winter, 'cooling' for summer
-    :param temperature_column: name of the column with the temperature data
-    :param energy_consumption_column: name of the column with the energy consumption data
-    :param time_step: time step of the series, 'H' or 'D'
+    :param time_step: frequency of the two series, 'H' or 'D'
     :return: the negated absolute value of the correlation between the energy consumption
      series and the degree days. It is negated because we want to maximize the correlation.
     """
@@ -661,11 +774,11 @@ def compute_dd_correlation(
     }
 
     if mode == "heating":
-        hdd = np.maximum(0, (bpt[0] - data[temperature_column]) / time_step_adj[time_step])
-        return -abs(data[energy_consumption_column].corr(hdd))
+        HeatingDegreeDays = np.maximum(0, (bpt[0] - outdoor_temperature_data) / time_step_adj[time_step])
+        return -abs(energy_consumption_data.corr(HeatingDegreeDays))
     elif mode == "cooling":
-        cdd = np.maximum(0, (data[temperature_column] - bpt[0]) / time_step_adj[time_step])
-        return -abs(data[energy_consumption_column].corr(cdd))
+        CoolingDegreeDays = np.maximum(0, (outdoor_temperature_data - bpt[0]) / time_step_adj[time_step])
+        return -abs(energy_consumption_data.corr(CoolingDegreeDays))
     else:
         raise ValueError("Mode for degree days must be heating or cooling.")
 
@@ -822,49 +935,20 @@ def add_weekly_profile(data: pd.DataFrame, target: str, aggregation: str = "medi
     return data_temp
 
 
-def crange(start: int, end: int, length: int, include_zero=True):
-    """
-    Generates a circular range given a start point, an end and
-    the length of the array.
-    For example, it can be used to generate calendar ranges for
-    arrays representing the days of the weeks, the hours of the
-    day, the months of the year, etc. which have a cyclic nature.
-    For example:
-    months_of_year = [*range(1, 13)]
-    list(crange(10, 6, 12, include_zero=False))
-    >> [10, 11, 12, 1, 2, 3, 4, 5]
-
-    hours_of_day = [*range(0, 24)]
-    list(crange(15, 2, 24, include_zero=True))
-    >> [15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1]
-
-    days_of_week = [*range(0, 7)]
-    list(crange(4, 4, 7, include_zero=True))
-
-    :param start: integer representing the range start.
-    :param end: integer representing the range end.
-    :param length: length of the array.
-    :param include_zero: True if the list contains the
-        zero, like weekdays or hours of day, false otherwise.
-    :return: yields all the elements of the calendar feature
-        in the specific range, taking into account the intrinsic
-        cyclic nature.
-    """
-
-    end = end if start < end else end + length
-    for i in range(start, end):
-        if not include_zero and not i % length:
-            yield length
-        else:
-            yield i % length
-
-
 if __name__ == '__main__':
     """
     This module is not supposed to run as a stand-alone module.
     This part below is only for testing purposes. 
     """
     from os.path import join
+    from ai_toolbox.data_modelling import identify_best_model
+    from sklearn.model_selection import TimeSeriesSplit
+    from sklearn.linear_model import Lasso, LinearRegression, HuberRegressor, BayesianRidge
+    from math import sqrt, ceil
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import PolynomialFeatures
+    from time import time
+    import numpy as np
 
     dataset_dir = "/home/rick/Coding/Notebooks/datasets"
     filename = join(dataset_dir, "asset_168_20230131162237.csv")
@@ -882,6 +966,42 @@ if __name__ == '__main__':
                        "168_occupancy_hourly.actual": "occupancy",
                        "168_external_temperature.actual": "OutdoorTemperature"}, inplace=True)
     target = "EnergyConsumptionGridElectricity"
+    predictors = (x for x in df.columns if x != target)
+    df.dropna(inplace=True)
+    y = df[target]
+    X = df[predictors]
 
-    print("BPT cooling: {}".format(optimize_balance_point_temperature(data=df, mode="cooling")))
-    print("BPT heating: {}".format(optimize_balance_point_temperature(data=df, mode="heating")))
+    cv_splitter_outer = TimeSeriesSplit(n_splits=3)
+    cv_splitter_inner = TimeSeriesSplit(n_splits=3)
+
+    # Only linear models!
+    grid = {
+        Pipeline([
+            ('dd', DegreeDaysTransformer()),
+            ('weekly_profile', WeeklyProfileTransformer()),
+            ('poly', PolynomialFeatures(include_bias=False)),
+            ('model', Lasso())
+        ]):
+            {
+                'poly__degree': list(range(1, 3)),
+                'model__alpha': [0.1, 1, 10]
+            }
+    }
+    start_time = time()
+    results = identify_best_model(
+        X_data=X,
+        y_data=y,
+        model_families_parameter_grid=grid,
+        cv_inner=cv_splitter_inner,
+        cv_outer=cv_splitter_outer,
+        scoring=['r2', 'mean_bias_error', 'neg_root_mean_squared_error', 'normalized_mean_bias_error', 'cv_rmse'],
+        compare_with='r2'
+    )
+
+    print("Best model: {}\n".format(results[0]))
+    print("Best parameters: {}\n".format(results[1]))
+    print("Mean score: {}\n".format(results[2]))
+    print("Std score: {}\n".format(results[3]))
+    print("Evaluation results: {}\n".format(results[5]))
+
+    print("Time to identify best model: {} seconds.".format(time() - start_time))

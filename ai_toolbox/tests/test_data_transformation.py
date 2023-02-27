@@ -412,9 +412,9 @@ class TestDataTransformation(unittest.TestCase):
         df = df.resample('H').agg('mean').reset_index()
         self.assertRaises(ValueError, data_transformation.add_degree_days_component, df)
 
-    def test_add_degree_days_component_adds_hdd_cdd_if_mode_none(self):
+    def test_add_degree_days_component_adds_HeatingDegreeDays_CoolingDegreeDays_if_mode_none(self):
         """
-        Test that add_degree_days_component adds the hdd and cdd components if
+        Test that add_degree_days_component adds the HeatingDegreeDays and CoolingDegreeDays components if
         selected mode is None.
         """
 
@@ -422,19 +422,41 @@ class TestDataTransformation(unittest.TestCase):
             columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
         df = df.resample('D').agg('mean')
         df = data_transformation.add_degree_days_component(data=df)
-        self.assertTrue(all(x in df.columns for x in ['hdd', 'cdd']))
+        self.assertTrue(all(x in df.columns for x in ['HeatingDegreeDays', 'CoolingDegreeDays']))
 
     def test_add_degree_days_component_raises_if_base_temperature_is_wrong_dict(self):
         """
         Test that add_degree_days_component raises if the provided base_temperature is
-        a dict without 'hdd' and 'cdd'.
+        a dict without 'HeatingDegreeDays' and 'CoolingDegreeDays'.
         """
 
         df = self.df_two_columns.rename(
             columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
         df = df.resample('D').agg('mean')
         self.assertRaises(
-            KeyError, data_transformation.add_degree_days_component, data=df, base_temperature={'hd': 15, 'cdd': 17})
+            KeyError,
+            data_transformation.add_degree_days_component,
+            data=df,
+            base_temperature={'hd': 15, 'CoolingDegreeDays': 17}
+        )
+
+    def test_degree_days_transformer_returns_same_result_as_function(self):
+        """
+        Test that DegreeDaysTransformer returns the same results as the corresponding
+        function.
+        """
+
+        df = self.df_two_columns.rename(
+            columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
+        df = df.resample('D').agg('mean')
+        assert_frame_equal(
+            data_transformation.add_degree_days_component(
+                df, base_temperature={'HeatingDegreeDays': 15, 'CoolingDegreeDays': 17}),
+            data_transformation.DegreeDaysTransformer(
+                base_temperature={'HeatingDegreeDays': 15, 'CoolingDegreeDays': 17}).fit_transform(
+                df, df['EnergyConsumptionGridElectricity']),
+            check_exact=False,
+            check_dtype=False)
 
     @classmethod
     def tearDownClass(cls):
