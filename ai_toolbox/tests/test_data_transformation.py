@@ -458,6 +458,24 @@ class TestDataTransformation(unittest.TestCase):
             check_exact=False,
             check_dtype=False)
 
+    def test_degree_days_transformer_raises_when_base_temperature_has_wrong_type(self):
+        """
+        Test that degree days transformer raises if the base temperature is
+         not of the correct type.
+        """
+        self.assertRaises(
+            TypeError,
+            data_transformation.DegreeDaysTransformer, 'l')
+
+    def test_degree_days_transformer_raises_when_base_temperature_key_missing(self):
+        """
+        Test that degree days transformer raises if a required key for base temperature
+        is missing.
+        """
+        self.assertRaises(
+            KeyError,
+            data_transformation.DegreeDaysTransformer, {'HeatingDegreeDays': 15})
+
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()

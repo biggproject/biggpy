@@ -482,7 +482,13 @@ class DegreeDaysTransformer(BaseEstimator, TransformerMixin):
         self.switch_on = switch_on
 
         if isinstance(base_temperature, dict):
-            self.hdd_bpt_, self.cdd_bpt_ = base_temperature["HeatingDegreeDays"], base_temperature["CoolingDegreeDays"]
+            # Catch and reraise with more specific message
+            try:
+                self.hdd_bpt_ = base_temperature["HeatingDegreeDays"]
+                self.cdd_bpt_ = base_temperature["CoolingDegreeDays"]
+            except KeyError as e:
+                raise KeyError("Provided base temperature dictionary must contain both 'HeatingDegreeDays' and "
+                      "'CoolingDegreeDays' keys.") from e
         elif isinstance(base_temperature, (float, int)):
             self.hdd_bpt_, self.cdd_bpt_ = base_temperature, base_temperature
         else:
@@ -940,68 +946,3 @@ if __name__ == '__main__':
     This module is not supposed to run as a stand-alone module.
     This part below is only for testing purposes. 
     """
-    from os.path import join
-    from ai_toolbox.data_modelling import identify_best_model
-    from sklearn.model_selection import TimeSeriesSplit
-    from sklearn.linear_model import Lasso, LinearRegression, HuberRegressor, BayesianRidge
-    from math import sqrt, ceil
-    from sklearn.pipeline import Pipeline
-    from sklearn.preprocessing import PolynomialFeatures
-    from time import time
-    import numpy as np
-
-    dataset_dir = "/home/rick/Coding/Notebooks/datasets"
-    filename = join(dataset_dir, "asset_168_20230131162237.csv")
-    df = pd.read_csv(
-        filename,
-        sep=',',
-        parse_dates=True,
-        infer_datetime_format=True,
-        index_col=0,
-        dayfirst=True)
-    df.index.name = "timestamp"
-    df = df.loc['2019-01-01 22:00': '2022-12-31']
-    df.rename(columns={"168_electricity_consumption.actual": "EnergyConsumptionGridElectricity",
-                       "168_heating_degree_hours.actual": "HDH", "168_cooling_degree_hours.actual": "CDH",
-                       "168_occupancy_hourly.actual": "occupancy",
-                       "168_external_temperature.actual": "OutdoorTemperature"}, inplace=True)
-    target = "EnergyConsumptionGridElectricity"
-    predictors = (x for x in df.columns if x != target)
-    df.dropna(inplace=True)
-    y = df[target]
-    X = df[predictors]
-
-    cv_splitter_outer = TimeSeriesSplit(n_splits=3)
-    cv_splitter_inner = TimeSeriesSplit(n_splits=3)
-
-    # Only linear models!
-    grid = {
-        Pipeline([
-            ('dd', DegreeDaysTransformer()),
-            ('weekly_profile', WeeklyProfileTransformer()),
-            ('poly', PolynomialFeatures(include_bias=False)),
-            ('model', Lasso())
-        ]):
-            {
-                'poly__degree': list(range(1, 3)),
-                'model__alpha': [0.1, 1, 10]
-            }
-    }
-    start_time = time()
-    results = identify_best_model(
-        X_data=X,
-        y_data=y,
-        model_families_parameter_grid=grid,
-        cv_inner=cv_splitter_inner,
-        cv_outer=cv_splitter_outer,
-        scoring=['r2', 'mean_bias_error', 'neg_root_mean_squared_error', 'normalized_mean_bias_error', 'cv_rmse'],
-        compare_with='r2'
-    )
-
-    print("Best model: {}\n".format(results[0]))
-    print("Best parameters: {}\n".format(results[1]))
-    print("Mean score: {}\n".format(results[2]))
-    print("Std score: {}\n".format(results[3]))
-    print("Evaluation results: {}\n".format(results[5]))
-
-    print("Time to identify best model: {} seconds.".format(time() - start_time))
