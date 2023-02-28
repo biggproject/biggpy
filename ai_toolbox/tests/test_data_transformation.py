@@ -383,6 +383,99 @@ class TestDataTransformation(unittest.TestCase):
         df_weekly = pd.DataFrame(index=idx, data={"data": [1]*24*7 + [2]*24*7})
         self.assertRaises(KeyError, data_transformation.add_weekly_profile, df_weekly, "x", "mean")
 
+    def test_add_degree_days_component_raises_if_freq_not_ok(self):
+        """
+        Test that add_degree_days_component raises if the freq is not 'D' or 'H'.
+        """
+
+        df = self.df_two_columns.rename(
+            columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
+        self.assertRaises(ValueError, data_transformation.add_degree_days_component, df)
+
+    def test_add_degree_days_component_raises_if_mode_not_ok(self):
+        """
+        Test that add_degree_days_component raises if mode is not 'heating' nor 'cooling'.
+        """
+
+        df = self.df_two_columns.rename(
+            columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
+        df = df.resample('H').agg('mean')
+        self.assertRaises(ValueError, data_transformation.add_degree_days_component, df, mode='fake')
+
+    def test_add_degree_days_component_raises_if_input_not_df(self):
+        """
+        Test that add_degree_days_component raises if the input is not a DataFrame with a DateTime index.
+        """
+
+        df = self.df_two_columns.rename(
+            columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
+        df = df.resample('H').agg('mean').reset_index()
+        self.assertRaises(ValueError, data_transformation.add_degree_days_component, df)
+
+    def test_add_degree_days_component_adds_HeatingDegreeDays_CoolingDegreeDays_if_mode_none(self):
+        """
+        Test that add_degree_days_component adds the HeatingDegreeDays and CoolingDegreeDays components if
+        selected mode is None.
+        """
+
+        df = self.df_two_columns.rename(
+            columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
+        df = df.resample('D').agg('mean')
+        df = data_transformation.add_degree_days_component(data=df)
+        self.assertTrue(all(x in df.columns for x in ['HeatingDegreeDays', 'CoolingDegreeDays']))
+
+    def test_add_degree_days_component_raises_if_base_temperature_is_wrong_dict(self):
+        """
+        Test that add_degree_days_component raises if the provided base_temperature is
+        a dict without 'HeatingDegreeDays' and 'CoolingDegreeDays'.
+        """
+
+        df = self.df_two_columns.rename(
+            columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
+        df = df.resample('D').agg('mean')
+        self.assertRaises(
+            KeyError,
+            data_transformation.add_degree_days_component,
+            data=df,
+            base_temperature={'hd': 15, 'CoolingDegreeDays': 17}
+        )
+
+    def test_degree_days_transformer_returns_same_result_as_function(self):
+        """
+        Test that DegreeDaysTransformer returns the same results as the corresponding
+        function.
+        """
+
+        df = self.df_two_columns.rename(
+            columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
+        df = df.resample('D').agg('mean')
+        assert_frame_equal(
+            data_transformation.add_degree_days_component(
+                df, base_temperature={'HeatingDegreeDays': 15, 'CoolingDegreeDays': 17}),
+            data_transformation.DegreeDaysTransformer(
+                base_temperature={'HeatingDegreeDays': 15, 'CoolingDegreeDays': 17}).fit_transform(
+                df, df['EnergyConsumptionGridElectricity']),
+            check_exact=False,
+            check_dtype=False)
+
+    def test_degree_days_transformer_raises_when_base_temperature_has_wrong_type(self):
+        """
+        Test that degree days transformer raises if the base temperature is
+         not of the correct type.
+        """
+        self.assertRaises(
+            TypeError,
+            data_transformation.DegreeDaysTransformer, 'l')
+
+    def test_degree_days_transformer_raises_when_base_temperature_key_missing(self):
+        """
+        Test that degree days transformer raises if a required key for base temperature
+        is missing.
+        """
+        self.assertRaises(
+            KeyError,
+            data_transformation.DegreeDaysTransformer, {'HeatingDegreeDays': 15})
+
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()
