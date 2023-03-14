@@ -19,7 +19,7 @@ from sklearn.preprocessing import FunctionTransformer
 from sklearn.utils.validation import check_is_fitted, check_X_y
 
 
-def yearly_profile_detection(data, exclude_days=None):
+def yearly_profile_detection(data, exclude_days=None, aggregation: str = 'median'):
     """
     The function returns the yearly profile of the input time series.
     It aggregates values of the input data over multiple years using
@@ -30,6 +30,7 @@ def yearly_profile_detection(data, exclude_days=None):
 
     :param data: Input time series whose yearly profile has to be detected.
     :param exclude_days: Time series of days to exclude from the input time series.
+    :param aggregation: Aggregation function to use to aggregate the data.
     :return: Time series representing the yearly profile, e.g. yearly electricity consumption
             pattern of the input time series at daily frequency.
     """
@@ -81,7 +82,7 @@ def yearly_profile_detection(data, exclude_days=None):
             raise TypeError("exclude_days argument must be a list of a boolean series of days to exclude.")
 
     # Group data first by month and then by day and aggregate by median
-    df_group = data.groupby(by=[data.index.month, data.index.day]).median()
+    df_group = data.groupby(by=[data.index.month, data.index.day]).agg(aggregation)
 
     # Set names of multiindex columns to identify month and day
     df_group.index.set_names(["month", "day"], inplace=True)
