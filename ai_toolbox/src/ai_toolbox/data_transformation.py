@@ -855,7 +855,8 @@ def trigonometric_encode_calendar_components(data, calendar_components=None, rem
         remainder=remainder)
 
 
-def add_holiday_component(data: pd.DataFrame, country: str, prov: str = None, state: str = None) -> pd.DataFrame:
+def add_holiday_component(data: Union[pd.Series, pd.DataFrame], country: str, prov: str = None, state: str = None) \
+        -> pd.DataFrame:
     """
     Adds the holiday feature to the input DataFrame based on the country.
     The computation of the holidays is based on the package
@@ -871,7 +872,7 @@ def add_holiday_component(data: pd.DataFrame, country: str, prov: str = None, st
     :return: new DataFrame with the added holiday component.
     """
 
-    if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
+    if not isinstance(data, (pd.DataFrame, pd.Series)) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
     country_holidays = holidays.country_holidays(
