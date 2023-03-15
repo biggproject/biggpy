@@ -127,6 +127,7 @@ setup(
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
         'wheel',
+        'dateutil>=2.8.2',
         'scikit-learn>=0.24.2',
         'statsmodels>=0.12.2',
         'pandas>=1.1.2',
