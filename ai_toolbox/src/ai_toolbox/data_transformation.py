@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytz
 from ai_toolbox.data_preparation import detect_time_step
+from dateutil.relativedelta import relativedelta
 from pandas.tseries.frequencies import to_offset
 from scipy import optimize
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -114,7 +115,7 @@ def weekly_profile_detection(
     It aggregates values of the input data over multiple years using
     the median and return a time series at hourly resolution, aligned
     with the last week of the series. The frequency of the input
-    data should not lower than 'H' (the maximum time step should be 'D').
+    data should not lower than 'H' (the maximum time step should be 'H').
     The input series should cover at least two weeks of data.
 
     :param data: Input time series whose weekly profile has to be detected.
@@ -941,6 +942,51 @@ def add_weekly_profile(data: pd.DataFrame, target: str, aggregation: str = "medi
     data_temp[feature_name] = merged_df[feature_name].values
     data_temp.drop(columns=["profile_key1", "profile_key2"], inplace=True)
     return data_temp
+
+
+def generate_extended_weekly_profile(
+        data: Union[pd.DataFrame, pd.Series],
+        aggregation: str = "median",
+        years: int = 5
+        ) -> pd.DataFrame:
+    """
+    Utility function to generate an extended weekly profile of the target feature,
+    aligning it with the other data and repeating it for a chosen time range. Differently from the
+    add_weekly_profile function, this one will extend the profile over several years
+    after the last timestamp of the input data and returns the extended profile.
+    It works only with hourly data.
+    :param data: input Dataframe with one column or series
+    :param aggregation: aggregation function to use for the profile
+    :param years: years for which the profile must be repeated, counted from the last timestamp of the
+        input data
+    :return: DataFrame with only the weekly profile extended
+    """
+
+    # Check input data before computing profile
+    if data.empty or not \
+       isinstance(data, (pd.Series, pd.DataFrame)) or \
+       (isinstance(data, pd.DataFrame) and data.shape[1] > 1):
+        raise ValueError("Input series must be not empty and have exactly one column (if DataFrame),"
+                         " i.e. shape = (n, 1).")
+
+    time_step = detect_time_step(data)[0]
+    if time_step is None or time_step != 'H':
+        raise ValueError("Impossible to determine the frequency of the input time series.")
+
+    if data.index.isocalendar().week.nunique() < 2:
+        raise ValueError("Input time series must cover at least two weeks to get a weekly profile.")
+
+    # Create weekly profile and align it with the input dataframe
+    df_weekly = data.groupby([data.index.dayofweek, data.index.hour]).agg(aggregation)
+    df_weekly = df_weekly.assign(
+        profile_key1=df_weekly.index.get_level_values(0),
+        profile_key2=df_weekly.index.get_level_values(1))
+    idx = pd.date_range(name='timestamp', start=data.index[0], end=data.index[-1] + relativedelta(years=years),
+                        freq="H")
+    df_profile = pd.DataFrame(data={"profile_key1": idx.dayofweek, "profile_key2": idx.hour}, index=idx)
+    merged_df = df_profile.reset_index().merge(df_weekly, on=["profile_key1", "profile_key2"]).set_index("timestamp")
+    merged_df.drop(columns=["profile_key1", "profile_key2"], inplace=True)
+    return merged_df.sort_index()
 
 
 if __name__ == '__main__':
