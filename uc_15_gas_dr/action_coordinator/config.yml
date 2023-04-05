@@ -1,0 +1,25 @@
+bau_controller:
+  control_interval_s: 150
+dr_event:
+  participants: ['House_2', 'House_11', 'House_79', 'House_33', 'House_34', 'House_109', 'House_114','House_42']
+  control_interval_s: 30
+pi_controller:
+  kp: 0.01
+  ki: 0.001
+agent:
+  trajectory_length: 48
+  trajectory_interval_s: 900
+  action_space: [0, 1]
+action_dispatcher:
+  enable_dispatch_actions: 1
+  enable_backup_controller: 1
+  temperature_band: 1.0
+house_id_mappings:
+  demo: boiler_id_e8:31:cd:af:12:44
+action_mappings:
+  default:
+    0: 0
+    1: 1
+  demo:
+    0: 0
+    1: 65

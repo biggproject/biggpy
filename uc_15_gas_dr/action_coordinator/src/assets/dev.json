@@ -1,0 +1,7 @@
+{
+    "domain" : "https://yourdomain.com",
+    "email" : "email@yourdomain.com",
+    "password": "yourpassword",
+
+    "filelocation" : "/"
+}

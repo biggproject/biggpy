@@ -1,0 +1,59 @@
+# List of parameters for boiler_modulation_trainer
+
+HOME_ID: 9
+
+wandb_key: "<insert_key_here>"
+
+agent_type: modular
+
+mode: PolicyEvaluation
+
+data_frequency: 5
+
+data_columns:
+  - "time"
+  - "t_out"
+  - "blr_mod_lvl"
+  - "t_r"
+  - "t_r_set"
+  - "t_set"
+  - "day"
+
+agent_params:
+  horizon: 1
+  buffer_size: 10000
+  ensemble_size: 1
+
+network_params:
+  lr: 0.001
+  batch_size: 2048
+  max_epochs: 1000
+  depth: 48
+
+  boiler_network:
+    fc:
+      - 32
+      - 32
+    output_size: 1
+    activation: relu
+    dropout_rate: 0.0
+
+  house_network:
+    fc:
+      - 32
+      - 32
+    output_size: 1
+    activation: relu
+    dropout_rate: 0.0
+
+  aggregator:
+    input_size: 5
+    output_size: 2
+    fc:
+      - 32
+      - 32
+    activation: relu
+    dropout_rate: 0.0
+
+logger:
+  name: deployment_test_1
