@@ -126,13 +126,13 @@ setup(
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
-        'wheel',
-        'dateutil>=2.8.2',
-        'scikit-learn>=0.24.2',
-        'statsmodels>=0.12.2',
-        'pandas>=1.1.2',
+        'cloudpickle>=2.0.0',
         'holidays>=0.13',
-        'cloudpickle>=2.0.0'
+        'numpy>=1.21.0',
+        'pandas>=1.1.5',
+        'python-dateutil>=2.8.2',
+        'scikit-learn>=0.24.2',
+        'statsmodels>=0.12.2'
     ],
     extras_require={
         "RL": [
