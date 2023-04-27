@@ -1,0 +1,40 @@
+# Keys are int values per household ID
+
+2:
+  boiler_id_a8:03:2a:4a:35:d0
+
+42:
+  boiler_id_a8:03:2a:d5:70:9c
+
+11:
+  boiler_id_0c:dc:7e:2e:55:d0
+
+79:
+  boiler_id_10:97:bd:38:4f:20
+
+114:
+  boiler_id_10:97:bd:37:13:2c
+
+33:
+  boiler_id_a8:03:2a:d5:81:44
+
+34:
+  boiler_id_a8:03:2a:d5:70:78
+
+109:
+  boiler_id_e8:31:cd:ae:c9:90
+
+# OLD Houses
+9:
+  boiler_id_a8:03:2a:4c:24:08
+
+
+13:
+  boiler_id_a8:03:2a:4c:24:48
+
+
+38:
+  boiler_id_a8:03:2a:d5:70:9c
+
+
+
