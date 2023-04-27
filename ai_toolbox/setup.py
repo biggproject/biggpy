@@ -34,7 +34,7 @@ setup(
     # For a discussion on single-sourcing the version across setup.py and the
     # project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='0.19.6',  # Required
+    version='0.19.7',  # Required
 
     # This is a one-line description or tagline of what your project does. This
     # corresponds to the "Summary" metadata field:
@@ -126,13 +126,13 @@ setup(
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
-        'wheel',
-        'dateutil>=2.8.2',
-        'scikit-learn>=0.24.2',
-        'statsmodels>=0.12.2',
-        'pandas>=1.1.2',
+        'cloudpickle>=2.0.0',
         'holidays>=0.13',
-        'cloudpickle>=2.0.0'
+        'numpy>=1.21.0',
+        'pandas>=1.1.5',
+        'python-dateutil>=2.8.2',
+        'scikit-learn>=0.24.2',
+        'statsmodels>=0.12.2'
     ],
     extras_require={
         "RL": [

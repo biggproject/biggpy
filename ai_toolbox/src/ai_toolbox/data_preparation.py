@@ -48,18 +48,17 @@ def detect_time_step(data):
             # First case: "easiest" case, uniform time series
             # (The try block is because infer_freq raises ValueError if there
             # are fewer than 3 datapoints in the series)
-            best_frequency = pd.infer_freq(df_clean.index, warn=True)
+            best_frequency = pd.infer_freq(df_clean.index)
         except ValueError:
             pass
         # Second case: "worst" case, non-uniform time series
         # the "best" frequency is the most frequent time delta between
         # two consecutive samples
         if best_frequency is None:
-            frequencies = pd.DataFrame(data=df_clean.index.to_series().diff().value_counts())
-            frequencies.rename(columns={frequencies.columns[0]: "freq_count"}, inplace=True)
+            frequencies = pd.DataFrame(data={"freq_count": df_clean.index.to_series().diff().value_counts()})
+            frequencies.index.name = "timedelta"
             frequencies["freqstr"] = frequencies.apply(lambda x: to_offset(x.name).freqstr, axis=1)
-            best_frequency = frequencies[
-                frequencies["freq_count"] == frequencies.freq_count.max()].sort_index().freqstr[0]
+            best_frequency = frequencies.sort_values(by=["freq_count", "timedelta"], ascending=[False, True]).iloc[0, 1]
 
     finally:
         return best_frequency, frequencies
