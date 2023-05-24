@@ -2,18 +2,15 @@
 # -*- coding: utf-8 -*-
 from abc import ABC
 from os.path import isabs, splitext, dirname, isdir
-from typing import Union
+from typing import Union, Tuple, List
 
-from numpy import arange, maximum, mean, std, full
-from sklearn.base import BaseEstimator, RegressorMixin
-from sklearn.linear_model import LinearRegression
+import pandas as pd
+from ai_toolbox.perfomance_metrics import custom_scorers
+from numpy import arange, mean, std, full
+from sklearn.base import BaseEstimator
 from sklearn.metrics import get_scorer
 from sklearn.model_selection import GridSearchCV, BaseCrossValidator, cross_validate
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
-
-from ai_toolbox.perfomance_metrics import custom_scorers
 
 
 class BlockingTimeSeriesSplit(BaseCrossValidator, ABC):
@@ -76,131 +73,14 @@ class BlockingTimeSeriesSplit(BaseCrossValidator, ABC):
             yield indices[start: mid], indices[mid + self.gap: stop]
 
 
-class NNWrapper(BaseEstimator, RegressorMixin):
-    """
-    Non-Negative Wrapper wraps other estimators to generate only non-negative predictions.
-    This can be useful with polynomial regression when modeling on data that cannot
-    assume negative values.
-    """
-
-    def __init__(self, estimator, **kwargs):
-        self.estimator = estimator
-        self.estimator.__init__(**kwargs)
-        self.X_ = None
-        self.y_ = None
-        self.coef_ = None
-        self.intercept_ = None
-
-    def fit(self, X, y):
-
-        # Check that X and y have correct shape
-        X, y = check_X_y(X, y)
-        self.X_ = X
-        self.y_ = y
-
-        # Fit the model and store the coefficients and intercept internally
-        fitted_model = self.estimator.fit(X=X, y=y)
-        self.coef_ = self.estimator.coef_
-        self.intercept_ = self.estimator.intercept_
-
-        return fitted_model
-
-    def predict(self, X):
-
-        # Check is fit had been called
-        check_is_fitted(self)
-        # Input validation
-        X = check_array(X)
-        return maximum(self.estimator.predict(X=X), 0)
-
-    def set_params(self, **parameters):
-        """
-        Redefine 'set_params', used by optimization frameworks, e.g. GridSearchCV,
-        to override the parameters set in the _init_ method.
-        """
-
-        self.estimator.set_params(**parameters)
-        return self
-
-
-class PolynomialRegression(BaseEstimator, RegressorMixin):
-    """
-    Polynomial regression estimator, created to offer a uniform interface
-    to the other functions of this module.
-    This class transforms the features into 'PolynomialFeatures' before
-    fitting the data with the 'LinearRegression' estimator.
-    """
-
-    def __init__(self, degree=4, fit_intercept=True, normalize=False, copy_X=True,
-                 n_jobs=None, positive=False):
-        self.degree = degree
-        self.fit_intercept = fit_intercept
-        self.normalize = normalize
-        self.copy_X = copy_X
-        self.n_jobs = n_jobs
-        self.positive = positive
-        self.model = Pipeline([
-            ("poly", PolynomialFeatures(
-                degree=self.degree,
-                include_bias=False
-            )),
-            ('linear', LinearRegression(
-                fit_intercept=True,
-                normalize=normalize,
-                copy_X=copy_X,
-                n_jobs=n_jobs,
-                positive=positive))
-        ])
-        self.X_ = None
-        self.y_ = None
-        self.coef_ = None
-        self.intercept_ = None
-
-    def fit(self, X, y):
-
-        # Check that X and y have correct shape
-        X, y = check_X_y(X, y)
-        self.X_ = X
-        self.y_ = y
-
-        # Fit the model and store the coefficients and intercept internally
-        fitted_model = self.model.fit(X=X, y=y)
-        self.coef_ = self.model.named_steps["linear"].coef_
-        self.intercept_ = self.model.named_steps["linear"].intercept_
-
-        return fitted_model
-
-    def predict(self, X):
-
-        # Check is fit had been called
-        check_is_fitted(self)
-        # Input validation
-        X = check_array(X)
-        return self.model.predict(X=X)
-
-    def set_params(self, **parameters):
-        """
-        Redefine 'set_params', used by optimization frameworks, e.g. GridSearchCV,
-        to override the parameters set in the _init_ method.
-        """
-
-        super(PolynomialRegression, self).set_params(**parameters)
-        self.model = Pipeline([
-            ("poly", PolynomialFeatures(
-                degree=self.degree,
-                include_bias=False
-            )),
-            ('linear', LinearRegression(
-                fit_intercept=self.fit_intercept,
-                normalize=self.normalize,
-                copy_X=self.copy_X,
-                n_jobs=self.n_jobs,
-                positive=self.positive))
-        ])
-        return self
-
-
-def evaluate_model_cv_with_tuning(model_family, X_data, y_data, parameter_grid, cv_outer, cv_inner, scoring=None):
+def evaluate_model_cv_with_tuning(
+        model_family: BaseEstimator,
+        X_data: Union[pd.DataFrame, pd.Series],
+        y_data: Union[pd.DataFrame, pd.Series],
+        parameter_grid: dict,
+        cv_outer: BaseCrossValidator,
+        cv_inner: BaseCrossValidator,
+        scoring=Union[Tuple, List, str]):
     """
     This function performs a nested cross-validation (double cross-validation),
     which includes an internal hyper-parameter tuning, to reduce the bias when combining
@@ -570,46 +450,3 @@ if __name__ == '__main__':
     This module is not supposed to run as a stand-alone module.
     This part below is only for testing purposes. 
     """
-
-    import pandas as pd
-
-    from sklearn.datasets import load_diabetes
-    from sklearn.model_selection import KFold
-    from sklearn.linear_model import Lasso
-    from time import time
-
-    start_time = time()
-    df = load_diabetes(as_frame=True).frame
-    df_X = df.iloc[:, :-1]
-    df_y = df.target
-
-    cv_splitter_outer = KFold(n_splits=5, shuffle=True, random_state=1)
-    cv_splitter_inner = KFold(n_splits=3, shuffle=True, random_state=1)
-    grid = {
-        Pipeline([
-            ('poly', PolynomialFeatures(include_bias=False)),
-            ('model', NNWrapper(estimator=Lasso()))
-        ]):
-            {
-                'poly__degree': list(range(3, 5)),
-                'model__alpha': [0.1, 1, 10]
-            }
-    }
-    results = identify_best_model(
-        X_data=df_X,
-        y_data=df_y,
-        model_families_parameter_grid=grid,
-        cv_inner=cv_splitter_inner,
-        cv_outer=cv_splitter_outer,
-        scoring=['mean_bias_error', 'normalized_mean_bias_error', 'r2', 'neg_root_mean_squared_error', 'cv_rmse'],
-        compare_with='r2'
-    )
-
-    print("Best model: {}".format(results[0]))
-    print("Best parameters: {}".format(results[1]))
-    print("Mean score: {}".format(results[2]))
-    print("Std score: {}".format(results[3]))
-    print("{}".format(pd.DataFrame.from_dict(results[4]).to_markdown()))
-    print("Evaluation results: {}".format(results[5]))
-
-    print("Time to identify best model: {} seconds.".format(time() - start_time))
