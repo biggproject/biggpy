@@ -31,7 +31,6 @@ class TestDataTransformation(unittest.TestCase):
             filename,
             sep=',',
             parse_dates=True,
-            infer_datetime_format=True,
             index_col=0)
 
         filename = join(dir_path, "fixtures", "df_weekly_profile.csv")
@@ -39,7 +38,6 @@ class TestDataTransformation(unittest.TestCase):
             filename,
             sep=',',
             parse_dates=True,
-            infer_datetime_format=True,
             index_col=0)
 
         # Load resulting time series for profile (dataframe) from csv
@@ -48,7 +46,6 @@ class TestDataTransformation(unittest.TestCase):
             filename,
             sep=',',
             parse_dates=True,
-            infer_datetime_format=True,
             index_col=0)
 
         filename = join(dir_path, "fixtures", "df_weekly_profile_result.csv")
@@ -56,7 +53,6 @@ class TestDataTransformation(unittest.TestCase):
             filename,
             sep=',',
             parse_dates=True,
-            infer_datetime_format=True,
             index_col=0)
 
         # Generate regular time series (dataframe) with 2 columns
@@ -69,6 +65,7 @@ class TestDataTransformation(unittest.TestCase):
 
         idx = pd.date_range(start='2021/10/28', end='2021/11/15', tz=pytz.utc, freq='D')
         cls.df_holidays = pd.DataFrame(data=np.random.randint(0, 10), index=idx, columns=['n1'])
+
     # yearly_profile_detection tests below
 
     def test_yearly_profile_detection_raises_if_empty_series(self):
@@ -149,7 +146,7 @@ class TestDataTransformation(unittest.TestCase):
             check_dtype=False)
 
     # weekly_profile_detection tests below
-    
+
     def test_weekly_profile_detection_raises_if_empty_series(self):
         """ Test that weekly_profile_detection raises ValueError in case of empty time series """
 
@@ -238,6 +235,55 @@ class TestDataTransformation(unittest.TestCase):
             check_exact=False,
             check_dtype=False)
 
+    def test_generate_extended_weekly_profile_raises_if_exclude_days_wrong_type(self):
+        """ Test that weekly_profile_detection raises if exclude_days is of the wrong type """
+
+        self.assertRaises(TypeError, data_transformation.generate_extended_weekly_profile,
+                          self.weekly_profile, "mean", "wrong_type")
+
+    def test_generate_extended_weekly_profile_ok_if_exclude_days_list(self):
+        """
+        Test that weekly_profile_detection gives expected result if exclude days is a list
+        and does not raise exception
+        """
+
+        # Exclude one Sunday
+        exclude_days = \
+            ['2024-02-04 00:00:00+00:00']
+        idx = pd.date_range(name='timestamp', start='2024-02-01', periods=21, tz=pytz.utc, freq='D')
+        df_test = pd.DataFrame(index=idx, data=np.arange(0, len(idx), step=1, dtype=float))
+        df_result_exclude = pd.DataFrame(index=idx, data=([7, 8, 9, 27/2, 11, 12, 13]*3), dtype=float)
+        assert_frame_equal(
+            data_transformation.generate_extended_weekly_profile(
+                df_test, aggregation="median", exclude_days=exclude_days, years=0),
+            df_result_exclude,
+            check_exact=False,
+            check_dtype=False,
+            check_column_type=False,
+            check_index_type=False,
+            check_freq=False)
+
+    def test_generate_extended_weekly_profile_ok_if_exclude_days_series(self):
+        """
+        Test that weekly_profile_detection gives expected result if exclude days is a series
+        and does not raise exception
+        """
+
+        idx = pd.date_range(name='timestamp', start='2024-02-01', periods=21, tz=pytz.utc, freq='D')
+        # Exclude one Sunday
+        series_exclude = pd.Series(data=(idx == '2024-02-04 00:00:00+00:00'), index=idx, dtype=int)
+        df_test = pd.DataFrame(index=idx, data=np.arange(0, len(idx), step=1, dtype=float))
+        df_result_exclude = pd.DataFrame(index=idx, data=([7, 8, 9, 27 / 2, 11, 12, 13] * 3), dtype=float)
+        assert_frame_equal(
+            data_transformation.generate_extended_weekly_profile(
+                df_test, aggregation="median", exclude_days=series_exclude, years=0),
+            df_result_exclude,
+            check_exact=False,
+            check_dtype=False,
+            check_column_type=False,
+            check_index_type=False,
+            check_freq=False)
+
     def test_add_lag_components_raises_if_empty_dataframe(self):
         """ Test that add_lag_components raises ValueError in case of empty DataFrame """
 
@@ -323,7 +369,7 @@ class TestDataTransformation(unittest.TestCase):
 
         calendar_components = ['month', 'day']
         df_calendar = data_transformation.add_calendar_components(
-                self.df_two_columns, calendar_components=calendar_components, drop_constant_columns=False)
+            self.df_two_columns, calendar_components=calendar_components, drop_constant_columns=False)
         df_transformed1 = data_transformation.CalendarComponentTransformer(
             components=calendar_components, encode=True).fit_transform(self.df_two_columns)
         column_transformer = data_transformation.trigonometric_encode_calendar_components(
@@ -356,31 +402,31 @@ class TestDataTransformation(unittest.TestCase):
     def test_add_weekly_profile_returns_expected_result(self):
         """ Test that add_weekly_profile returns expected result """
 
-        idx = pd.date_range(start='2021/12/01', periods=24*14, tz=pytz.utc, freq='1H')
-        df_weekly = pd.DataFrame(index=idx, data={"data": [1]*24*7 + [2]*24*7})
+        idx = pd.date_range(start='2021/12/01', periods=24 * 14, tz=pytz.utc, freq='1H')
+        df_weekly = pd.DataFrame(index=idx, data={"data": [1] * 24 * 7 + [2] * 24 * 7})
         result = data_transformation.add_weekly_profile(df_weekly, "data", "mean")
         self.assertEqual(
             result["data_weekly_profile"].to_list(),
-            [1.5]*24*14
+            [1.5] * 24 * 14
         )
 
     def test_weekly_profile_transformers_returns_expected_result(self):
         """ Test that WeeklyProfileTransformer returns expected result """
 
-        idx = pd.date_range(start='2021/12/01', periods=24*14, tz=pytz.utc, freq='1H')
-        df_weekly = pd.DataFrame(index=idx, data={"data": [1]*24*7 + [2]*24*7})
+        idx = pd.date_range(start='2021/12/01', periods=24 * 14, tz=pytz.utc, freq='1H')
+        df_weekly = pd.DataFrame(index=idx, data={"data": [1] * 24 * 7 + [2] * 24 * 7})
         result = data_transformation.WeeklyProfileTransformer(aggregation="mean").fit_transform(
             df_weekly["data"], df_weekly["data"])
         self.assertEqual(
             result["data_weekly_profile"].to_list(),
-            [1.5]*24*14
+            [1.5] * 24 * 14
         )
 
     def test_add_weekly_profile_raises_if_target_not_in_columns(self):
         """ Test that add_weekly_profile raises if target is not in columns """
 
-        idx = pd.date_range(start='2021/12/01', periods=24*14, tz=pytz.utc, freq='1H')
-        df_weekly = pd.DataFrame(index=idx, data={"data": [1]*24*7 + [2]*24*7})
+        idx = pd.date_range(start='2021/12/01', periods=24 * 14, tz=pytz.utc, freq='1H')
+        df_weekly = pd.DataFrame(index=idx, data={"data": [1] * 24 * 7 + [2] * 24 * 7})
         self.assertRaises(KeyError, data_transformation.add_weekly_profile, df_weekly, "x", "mean")
 
     def test_add_degree_days_component_raises_if_freq_not_ok(self):

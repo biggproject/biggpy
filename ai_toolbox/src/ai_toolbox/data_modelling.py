@@ -333,7 +333,7 @@ def evaluate_model_cv_with_tuning_parallel(model_family, X_data, y_data, paramet
     # Sanitize scorers and get the scoring function in case of custom scorer
     sanitized_scorers = sanitize_scorers(scoring)
 
-    # Configure the internal hyper-parameter tuner
+    # Configure the internal hyperparameter tuner
     hp_tuner = GridSearchCV(
         estimator=model_family,
         param_grid=parameter_grid,

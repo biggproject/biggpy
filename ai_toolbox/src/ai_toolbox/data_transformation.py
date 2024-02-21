@@ -946,9 +946,9 @@ def add_weekly_profile(data: pd.DataFrame, target: str, aggregation: str = "medi
 
 def generate_extended_weekly_profile(
         data: Union[pd.DataFrame, pd.Series],
+        exclude_days: Union[pd.Series, list] = None,
         aggregation: str = "median",
-        years: int = 5
-        ) -> pd.DataFrame:
+        years: int = 5) -> pd.DataFrame:
     """
     Utility function to generate an extended weekly profile of the target feature,
     aligning it with the other data and repeating it for a chosen time range. Differently from the
@@ -956,6 +956,7 @@ def generate_extended_weekly_profile(
     after the last timestamp of the input data and returns the extended profile.
     It works only with hourly data.
     :param data: input Dataframe with one column or series
+    :param exclude_days: Time series of days to exclude from the input time series.
     :param aggregation: aggregation function to use for the profile
     :param years: years for which the profile must be repeated, counted from the last timestamp of the
         input data
@@ -970,11 +971,31 @@ def generate_extended_weekly_profile(
                          " i.e. shape = (n, 1).")
 
     time_step = detect_time_step(data)[0]
-    if time_step is None or time_step != 'H':
+    if time_step is None:
         raise ValueError("Impossible to determine the frequency of the input time series.")
 
     if data.index.isocalendar().week.nunique() < 2:
         raise ValueError("Input time series must cover at least two weeks to get a weekly profile.")
+
+    # Filter out holidays or other days from the input data
+    if exclude_days is not None:
+        if isinstance(exclude_days, pd.Series):
+            # Convert to bool if numeric
+            if exclude_days.dtype is not bool:
+                exclude_days = exclude_days.astype(bool)
+
+            # Assuming exclude_days is a boolean series where True means filter out the day
+            # Get the datetimeindex of True values
+            exclude_days = exclude_days.index[exclude_days].normalize()
+            mask = pd.Series(data.index.normalize().isin(exclude_days), index=data.index)
+            data = data.mask(mask)
+        elif isinstance(exclude_days, list):
+            # If it is a list convert to utc datetimeindex before filtering
+            exclude_days = pd.to_datetime(exclude_days, utc=True)
+            mask = pd.Series(data.index.normalize().isin(exclude_days), index=data.index)
+            data = data.mask(mask)
+        else:
+            raise TypeError("exclude_days argument must be a list or a boolean series of days to exclude.")
 
     # Create weekly profile and align it with the input dataframe
     df_weekly = data.groupby([data.index.dayofweek, data.index.hour]).agg(aggregation)
