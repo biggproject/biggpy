@@ -452,7 +452,7 @@ def identify_best_model(X_data, y_data, model_families_parameter_grid, cv_outer,
         param_grid=model_families_parameter_grid[best_model_family],
         n_jobs=-1,
         cv=cv_inner,
-        refit=True
+        refit=compare_with,
         ).fit(X=X_data, y=y_data)
 
     # Stringify double_cv_results keys before returning it
