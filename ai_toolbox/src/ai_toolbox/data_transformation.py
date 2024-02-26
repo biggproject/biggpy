@@ -10,7 +10,6 @@ import holidays
 import numpy as np
 import pandas as pd
 import pytz
-from ai_toolbox.data_preparation import detect_time_step
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.frequencies import to_offset
 from scipy import optimize
@@ -18,6 +17,8 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.utils.validation import check_is_fitted, check_X_y
+
+from ai_toolbox.data_preparation import detect_time_step
 
 
 def yearly_profile_detection(data, exclude_days=None, aggregation: str = 'median'):
