@@ -56,7 +56,7 @@ class TestDataTransformation(unittest.TestCase):
             index_col=0)
 
         # Generate regular time series (dataframe) with 2 columns
-        idx = pd.date_range(start='2021/10/01', end='2021/10/31', tz=pytz.utc, freq='10T')
+        idx = pd.date_range(start='2021/10/01', end='2021/10/31', tz=pytz.utc, freq='10min')
         cls.df_two_columns = pd.DataFrame(
             data=np.random.randint(0, 100, size=(len(idx), 2)),
             index=idx,
@@ -93,7 +93,7 @@ class TestDataTransformation(unittest.TestCase):
         """ Test that yearly_profile_detection raises if the frequency is lower than daily """
 
         # Try with yearly frequency
-        mock_detect_time_step.return_value = 'Y', 'None'
+        mock_detect_time_step.return_value = 'YE', 'None'
         self.assertRaises(ValueError, data_transformation.yearly_profile_detection, self.yearly_profile)
 
     @patch("ai_toolbox.data_transformation.detect_time_step")
@@ -103,7 +103,7 @@ class TestDataTransformation(unittest.TestCase):
         and does not raise exception
         """
 
-        for frequency in ['60S', '1T', '30min', '15H', '1D']:
+        for frequency in ['60s', '1min', '30min', '15h', '1d']:
             mock_detect_time_step.return_value = frequency, 'None'
             assert_frame_equal(
                 data_transformation.yearly_profile_detection(self.yearly_profile),
@@ -172,7 +172,7 @@ class TestDataTransformation(unittest.TestCase):
         """ Test that weekly_profile_detection raises if the frequency is lower than hourly """
 
         # Try with daily frequency
-        mock_detect_time_step.return_value = '1D', 'None'
+        mock_detect_time_step.return_value = '1d', 'None'
         self.assertRaises(ValueError, data_transformation.weekly_profile_detection, self.weekly_profile)
 
     @patch("ai_toolbox.data_transformation.detect_time_step")
@@ -182,7 +182,7 @@ class TestDataTransformation(unittest.TestCase):
         and does not raise exception
         """
 
-        for frequency in ['60S', '1T', '30min', '1H']:
+        for frequency in ['60s', '1min', '30min', '1h']:
             mock_detect_time_step.return_value = frequency, 'None'
             assert_frame_equal(
                 data_transformation.weekly_profile_detection(self.weekly_profile),
@@ -210,7 +210,7 @@ class TestDataTransformation(unittest.TestCase):
              '2020-09-06 00:00:00+00:00', '2020-09-13 00:00:00+00:00', '2020-09-20 00:00:00+00:00',
              '2020-09-27 00:00:00+00:00']
         df_result_exclude = self.result_weekly_profile.drop(
-            pd.date_range(start="2020-09-27", freq='1H', tz=pytz.utc, periods=24))
+            pd.date_range(start="2020-09-27", freq='1h', tz=pytz.utc, periods=24))
         assert_frame_equal(
             data_transformation.weekly_profile_detection(
                 self.weekly_profile, aggregation="median", exclude_days=exclude_days),
@@ -225,10 +225,10 @@ class TestDataTransformation(unittest.TestCase):
         """
 
         # Exclude all the Sundays
-        idx = pd.date_range(start='2020-07-01', end='2020-09-30', tz=pytz.utc, freq='H')
+        idx = pd.date_range(start='2020-07-01', end='2020-09-30', tz=pytz.utc, freq='h')
         series_exclude = pd.Series(data=(idx.dayofweek == 6), index=idx)
         df_result_exclude = self.result_weekly_profile.drop(
-            pd.date_range(start="2020-09-27", freq='1H', tz=pytz.utc, periods=24))
+            pd.date_range(start="2020-09-27", freq='1h', tz=pytz.utc, periods=24))
         assert_frame_equal(
             data_transformation.weekly_profile_detection(self.weekly_profile, "median", series_exclude),
             df_result_exclude,
@@ -402,7 +402,7 @@ class TestDataTransformation(unittest.TestCase):
     def test_add_weekly_profile_returns_expected_result(self):
         """ Test that add_weekly_profile returns expected result """
 
-        idx = pd.date_range(start='2021/12/01', periods=24 * 14, tz=pytz.utc, freq='1H')
+        idx = pd.date_range(start='2021/12/01', periods=24 * 14, tz=pytz.utc, freq='1h')
         df_weekly = pd.DataFrame(index=idx, data={"data": [1] * 24 * 7 + [2] * 24 * 7})
         result = data_transformation.add_weekly_profile(df_weekly, "data", "mean")
         self.assertEqual(
@@ -413,7 +413,7 @@ class TestDataTransformation(unittest.TestCase):
     def test_weekly_profile_transformers_returns_expected_result(self):
         """ Test that WeeklyProfileTransformer returns expected result """
 
-        idx = pd.date_range(start='2021/12/01', periods=24 * 14, tz=pytz.utc, freq='1H')
+        idx = pd.date_range(start='2021/12/01', periods=24 * 14, tz=pytz.utc, freq='h')
         df_weekly = pd.DataFrame(index=idx, data={"data": [1] * 24 * 7 + [2] * 24 * 7})
         result = data_transformation.WeeklyProfileTransformer(aggregation="mean").fit_transform(
             df_weekly["data"], df_weekly["data"])
@@ -425,7 +425,7 @@ class TestDataTransformation(unittest.TestCase):
     def test_add_weekly_profile_raises_if_target_not_in_columns(self):
         """ Test that add_weekly_profile raises if target is not in columns """
 
-        idx = pd.date_range(start='2021/12/01', periods=24 * 14, tz=pytz.utc, freq='1H')
+        idx = pd.date_range(start='2021/12/01', periods=24 * 14, tz=pytz.utc, freq='1h')
         df_weekly = pd.DataFrame(index=idx, data={"data": [1] * 24 * 7 + [2] * 24 * 7})
         self.assertRaises(KeyError, data_transformation.add_weekly_profile, df_weekly, "x", "mean")
 
@@ -445,7 +445,7 @@ class TestDataTransformation(unittest.TestCase):
 
         df = self.df_two_columns.rename(
             columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
-        df = df.resample('H').agg('mean')
+        df = df.resample('1h').agg('mean')
         self.assertRaises(ValueError, data_transformation.add_degree_days_component, df, mode='fake')
 
     def test_add_degree_days_component_raises_if_input_not_df(self):
@@ -455,7 +455,7 @@ class TestDataTransformation(unittest.TestCase):
 
         df = self.df_two_columns.rename(
             columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
-        df = df.resample('H').agg('mean').reset_index()
+        df = df.resample('1h').agg('mean').reset_index()
         self.assertRaises(ValueError, data_transformation.add_degree_days_component, df)
 
     def test_add_degree_days_component_adds_HeatingDegreeDays_CoolingDegreeDays_if_mode_none(self):
@@ -466,7 +466,7 @@ class TestDataTransformation(unittest.TestCase):
 
         df = self.df_two_columns.rename(
             columns={'n1': 'OutdoorTemperature', 'n2': "EnergyConsumptionGridElectricity"})
-        df = df.resample('D').agg('mean')
+        df = df.resample('1d').agg('mean')
         df = data_transformation.add_degree_days_component(data=df)
         self.assertTrue(all(x in df.columns for x in ['HeatingDegreeDays', 'CoolingDegreeDays']))
 

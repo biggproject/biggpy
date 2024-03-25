@@ -63,11 +63,11 @@ def yearly_profile_detection(data, exclude_days=None, aggregation: str = 'median
         raise ValueError("Input time series must cover at least two years to get a yearly profile.")
 
     try:
-        frq_cmp = to_offset(detect_time_step(data)[0]) > to_offset('1D')
+        frq_cmp = to_offset(detect_time_step(data)[0]) > to_offset('1d')
         if frq_cmp:
-            raise ValueError("The frequency of the input time series must be not lower than '1D'.")
+            raise ValueError("The frequency of the input time series must be not lower than '1d'.")
     except TypeError:
-        raise ValueError("The frequency of the input time series must be not lower than '1D'.")
+        raise ValueError("The frequency of the input time series must be not lower than '1d'.")
 
     # Filter out holidays or other days from the input data
     if exclude_days is not None:
@@ -152,11 +152,11 @@ def weekly_profile_detection(
         raise ValueError("Input time series must cover at least two weeks to get a weekly profile.")
 
     try:
-        frq_cmp = to_offset(detect_time_step(data)[0]) > to_offset('1H')
+        frq_cmp = to_offset(detect_time_step(data)[0]) > to_offset('1h')
         if frq_cmp:
-            raise ValueError("The frequency of the input time series must be not lower than '1H'.")
+            raise ValueError("The frequency of the input time series must be not lower than '1h'.")
     except TypeError:
-        raise ValueError("The frequency of the input time series must be not lower than '1H'.")
+        raise ValueError("The frequency of the input time series must be not lower than '1h'.")
 
     # Filter out holidays or other days from the input data
     if exclude_days is not None:
@@ -182,7 +182,7 @@ def weekly_profile_detection(
 
     # Get last Sunday in the original series and generate "synthetic" datetimeindex for alignment
     last_sunday = data.index[data.index.dayofweek == 6][-1].replace(hour=23, minute=0, second=0, tzinfo=pytz.utc)
-    days = pd.date_range(end=last_sunday, freq='1H', periods=24 * 7)
+    days = pd.date_range(end=last_sunday, freq='1h', periods=24 * 7)
 
     # Add columns year, month, day and set it constant to last year, month for alignment and last week days for day
     df_group["year"] = data.index.year[-1]
@@ -256,7 +256,7 @@ class HolidayTransformer(BaseEstimator, TransformerMixin):
                 country=self.country,
                 prov=self.prov,
                 state=self.state)[X.index.min():X.index.max() + timedelta(days=1)]
-            col_holidays = pd.DatetimeIndex(X.index.date).isin(country_holidays).astype(int)
+            col_holidays = np.isin(X.index.date, country_holidays).astype(int)
             return X.assign(holiday=col_holidays)
         else:
             return X
@@ -530,8 +530,8 @@ class DegreeDaysTransformer(BaseEstimator, TransformerMixin):
         if self.X_time_step_ != self.y_time_step_:
             raise ValueError("X and y must have the same time step: X time step is '{}', y time step is '{}'.")
 
-        if self.y_time_step_ not in ['H', 'D']:
-            raise ValueError("Input data must have hourly ('H') or daily ('D') granularity.")
+        if self.y_time_step_ not in ['h', 'd', 'H', 'D', '1h', '1d']:
+            raise ValueError("Input data must have hourly ('h') or daily ('d') granularity.")
 
         if isinstance(self.base_temperature, dict):
             self.hdd_bpt_ = self.base_temperature['HeatingDegreeDays']
@@ -667,8 +667,8 @@ def optimize_balance_point_temperature(
     if mode not in ["heating", "cooling"]:
         raise ValueError("Mode for degree days must be either heating or cooling.")
 
-    if time_step not in ['H', 'D']:
-        raise ValueError("Input series must have hourly ('H') or daily ('D') granularity.")
+    if time_step not in ['h', 'd', 'H', 'D', '1h', '1d']:
+        raise ValueError("Input series must have hourly ('h') or daily ('d') granularity.")
 
     bpt_range = None
     if mode == 'heating':
@@ -720,8 +720,8 @@ def add_degree_days_component(
         raise ValueError("Mode for degree days must be heating or cooling or mixed.")
 
     time_step = detect_time_step(data[temperature_column])[0]
-    if time_step not in ['H', 'D']:
-        raise ValueError("Input series must have hourly ('H') or daily ('D') granularity.")
+    if time_step not in ['h', 'd', 'H', 'D', '1h', '1d']:
+        raise ValueError("Input series must have hourly ('h') or daily ('d') granularity.")
 
     time_step_adj = {
         'H': 24,
@@ -882,7 +882,7 @@ def add_holiday_component(data: Union[pd.Series, pd.DataFrame], country: str, pr
         prov=prov,
         state=state)[data.index.min():data.index.max() + timedelta(days=1)]
 
-    return data.assign(holiday=pd.DatetimeIndex(data.index.date).isin(country_holidays).astype(int))
+    return data.assign(holiday=np.isin(data.index.date, country_holidays).astype(int)).astype(int)
 
 
 def get_calendar_component(data: pd.DataFrame, component: str) -> pd.Series:
@@ -926,11 +926,11 @@ def add_weekly_profile(data: pd.DataFrame, target: str, aggregation: str = "medi
         raise ValueError("Input time series must cover at least two weeks to get a weekly profile.")
 
     try:
-        frq_cmp = to_offset(detect_time_step(data[[target]])[0]) > to_offset('1H')
+        frq_cmp = to_offset(detect_time_step(data[[target]])[0]) > to_offset('1h')
         if frq_cmp:
-            raise ValueError("The frequency of the input time series must be not lower than '1H'.")
+            raise ValueError("The frequency of the input time series must be not lower than '1h'.")
     except TypeError:
-        raise ValueError("The frequency of the input time series must be not lower than '1H'.")
+        raise ValueError("The frequency of the input time series must be not lower than '1h'.")
 
     # Create weekly profile and align it with the input dataframe
     feature_name = "{}_weekly_profile".format(target)
@@ -949,6 +949,7 @@ def generate_extended_weekly_profile(
         data: Union[pd.DataFrame, pd.Series],
         exclude_days: Union[pd.Series, list] = None,
         aggregation: str = "median",
+        local_tz: str = None,
         years: int = 5) -> pd.DataFrame:
     """
     Utility function to generate an extended weekly profile of the target feature,
@@ -959,6 +960,7 @@ def generate_extended_weekly_profile(
     :param data: input Dataframe with one column or series
     :param exclude_days: Time series of days to exclude from the input time series.
     :param aggregation: aggregation function to use for the profile
+    :param local_tz: local timezone of the site
     :param years: years for which the profile must be repeated, counted from the last timestamp of the
         input data
     :return: DataFrame with only the weekly profile extended
@@ -999,12 +1001,17 @@ def generate_extended_weekly_profile(
             raise TypeError("exclude_days argument must be a list or a boolean series of days to exclude.")
 
     # Create weekly profile and align it with the input dataframe
+
+    if local_tz:
+        # Convert before computing the profile
+        data.index = data.index.tz_convert(local_tz)
+
     df_weekly = data.groupby([data.index.dayofweek, data.index.hour]).agg(aggregation)
     df_weekly = df_weekly.assign(
         profile_key1=df_weekly.index.get_level_values(0),
         profile_key2=df_weekly.index.get_level_values(1))
     idx = pd.date_range(name='timestamp', start=data.index[0], end=data.index[-1] + relativedelta(years=years),
-                        freq="H")
+                        freq="h")
     df_profile = pd.DataFrame(data={"profile_key1": idx.dayofweek, "profile_key2": idx.hour}, index=idx)
     merged_df = df_profile.reset_index().merge(df_weekly, on=["profile_key1", "profile_key2"]).set_index("timestamp")
     merged_df.drop(columns=["profile_key1", "profile_key2"], inplace=True)

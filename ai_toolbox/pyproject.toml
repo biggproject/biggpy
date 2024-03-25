@@ -17,7 +17,7 @@ name = "bigg-ai-toolbox"  # Required
 #
 # For a discussion on single-sourcing the version, see
 # https://packaging.python.org/guides/single-sourcing-package-version/
-version = "0.20.9"  # Required
+version = "0.20.10"  # Required
 
 # This is a one-line description or tagline of what your project does. This
 # corresponds to the "Summary" metadata field:
@@ -90,7 +90,9 @@ classifiers = [  # Optional
   # checked by "pip install". See instead "python_requires" below.
   "Programming Language :: Python :: 3.6",
   "Programming Language :: Python :: 3.7",
-  "Programming Language :: Python :: 3.8"
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10"
 ]
 
 # This field lists other packages that your project depends on to run.

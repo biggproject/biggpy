@@ -28,11 +28,10 @@ class TestDataPreparation(unittest.TestCase):
             filename,
             sep=';',
             parse_dates=True,
-            infer_datetime_format=True,
             index_col=0)
 
         # Generate regular time series (dataframe)
-        idx = pd.date_range(start='2021/10/01', end='2021/11/01', tz=pytz.utc, freq='10T')
+        idx = pd.date_range(start='2021/10/01', end='2021/11/01', tz=pytz.utc, freq='10min')
         cls.df_regular = pd.DataFrame(data=np.random.randint(0, 100, size=(len(idx))), index=idx, columns=["rand_int"])
 
         # Generate regular time series (pandas series)
@@ -49,7 +48,7 @@ class TestDataPreparation(unittest.TestCase):
         cls.df_two_freq = pd.DataFrame(data=np.random.randint(0, 100, size=(len(idx))), index=idx, columns=["rand_int"])
 
         # Generate regular time series (dataframe) with 2 columns
-        idx = pd.date_range(start='2021/10/01', end='2021/11/01', tz=pytz.utc, freq='10T')
+        idx = pd.date_range(start='2021/10/01', end='2021/11/01', tz=pytz.utc, freq='10min')
         cls.df_two_columns = pd.DataFrame(
             data=np.random.randint(0, 100, size=(len(idx), 2)),
             index=idx,
@@ -57,38 +56,38 @@ class TestDataPreparation(unittest.TestCase):
         )
 
         counter = [30, 1, 20, 28, 44, 0, 2, 11, 56, 0, 23, 89, 10, 32, 45, 19]
-        cls.df_counter = pd.Series(data=counter, index=pd.date_range('12/11/2021', freq='15T', periods=len(counter)))
+        cls.df_counter = pd.Series(data=counter, index=pd.date_range('12/11/2021', freq='15min', periods=len(counter)))
 
         delta = [30.0, -29.0, 19.0, 8.0, 16.0, -44.0, 2.0, 9.0, 45.0, -56.0, 23.0, 66.0, -79.0, 22.0, 13.0, -26.0]
-        cls.df_delta = pd.Series(data=delta, index=pd.date_range('12/11/2021', freq='15T', periods=len(delta)))
+        cls.df_delta = pd.Series(data=delta, index=pd.date_range('12/11/2021', freq='15min', periods=len(delta)))
 
     # detect_time_step tests below
 
     def test_detect_time_step_for_irregular_time_series(self):
         """ Test that detect_time_step works with an irregular time series """
 
-        self.df_irregular = self.df_irregular.resample('30T').mean()
-        self.assertEqual(data_preparation.detect_time_step(self.df_irregular)[0], '30T')
+        self.df_irregular = self.df_irregular.resample('30min').mean()
+        self.assertIn(data_preparation.detect_time_step(self.df_irregular)[0], ['30T', '30min'])
 
     def test_detect_time_step_regular_time_series_with_df(self):
         """ Test that detect_time_step works with a regular time series represented by DataFrame """
 
-        self.assertEqual(data_preparation.detect_time_step(self.df_regular)[0], '10T')
+        self.assertIn(data_preparation.detect_time_step(self.df_regular)[0], ['10T', '10min'])
 
     def test_detect_time_step_of_regular_time_series_with_series(self):
         """ Test that detect_time_step works with a time series represented by Series """
 
-        self.assertEqual(data_preparation.detect_time_step(self.series_regular)[0], '10T')
+        self.assertIn(data_preparation.detect_time_step(self.series_regular)[0], ['10T', '10min'])
 
     def test_detect_time_step_unsorted_series(self):
         """ Test that detect_time_step still works with an unsorted time series """
 
-        self.assertEqual(data_preparation.detect_time_step(self.df_regular.sample(frac=1))[0], '10T')
+        self.assertIn(data_preparation.detect_time_step(self.df_regular.sample(frac=1))[0], ['10T', '10min'])
 
     def test_detect_time_step_two_values(self):
         """ Test that detect_time_step still works with a time series of just two values """
 
-        self.assertEqual(data_preparation.detect_time_step(self.df_short)[0], '15T')
+        self.assertIn(data_preparation.detect_time_step(self.df_short)[0], ['15T', '15min'])
 
     def test_detect_time_step_two_frequencies(self):
         """
@@ -96,7 +95,7 @@ class TestDataPreparation(unittest.TestCase):
          more than one occurrence of the most frequent time delta
         """
 
-        self.assertEqual(data_preparation.detect_time_step(self.df_two_freq)[0], '15T')
+        self.assertIn(data_preparation.detect_time_step(self.df_two_freq)[0], ['15T', '15min'])
 
     def test_detect_time_step_raises_if_empty_series(self):
         """ Test that detect_time_step raises ValueError in case of empty time series """
@@ -132,9 +131,9 @@ class TestDataPreparation(unittest.TestCase):
         result_list = [[1, 4, 7], [1, 4, 7], [3, 12, 21], [0, 3, 6], [2, 5, 8]]
         for i, aggr_function in enumerate(['mean', 'median', 'sum', 'min', 'max']):
             df_aligned = data_preparation.align_time_grid(
-                data=df, output_frequency='3T', aggregation_function=aggr_function)
+                data=df, output_frequency='3min', aggregation_function=aggr_function)
             expected_result = pd.DataFrame(
-                data=result_list[i], index=pd.date_range(start='2021/10/01', periods=3, freq='3T'), columns=['numbers'])
+                data=result_list[i], index=pd.date_range(start='2021/10/01', periods=3, freq='3min'), columns=['numbers'])
             assert_frame_equal(df_aligned, expected_result, check_exact=False, check_dtype=False)
 
     # clean_ts_integrate tests below
@@ -164,7 +163,7 @@ class TestDataPreparation(unittest.TestCase):
         expected_result = [30.0, 1.0, 19.0, 8.0, 16.0, 0.0, 2.0, 9.0, 45.0, 0.0, 23.0, 66.0, 10.0, 22.0, 13.0, 19.0]
         expected_result = pd.Series(
             data=expected_result,
-            index=pd.date_range('12/11/2021', freq='15T', periods=len(expected_result)))
+            index=pd.date_range('12/11/2021', freq='15min', periods=len(expected_result)))
         assert_series_equal(series_converted, expected_result, check_exact=False, check_dtype=False)
 
     def test_clean_ts_integrate_ok_delta(self):
