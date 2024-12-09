@@ -40,7 +40,7 @@ def cv_rmse(y_true, y_pred, multioutput='uniform_average', number_of_parameters=
 
     # Replace the mean of y_true with the epsilon if it is zero
     # to avoid zero division errors
-    mean_y_true = np.where(np.mean(y_true, axis=0) == 0, np.finfo(np.float64).eps, np.mean(y_true, axis=0))
+    mean_y_true = np.clip(np.mean(y_true, axis=0), np.finfo(np.float64).eps, None)
     output = (100 / mean_y_true) * np.sqrt(sum_squared_errors / (len(y_true) - number_of_parameters))
 
     if isinstance(multioutput, str):
