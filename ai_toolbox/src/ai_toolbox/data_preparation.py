@@ -1,8 +1,10 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
+import numpy as np
 import pandas as pd
 from pandas.tseries.frequencies import to_offset
+from scipy.stats import zscore
 
 
 def detect_time_step(data):
@@ -35,11 +37,11 @@ def detect_time_step(data):
 
     # Clean-up the data by dropping NaN values and sorting the index (irregular time series) .
     # Otherwise, the function will be misled when guessing the frequency by the DateTimeIndex
-    df_clean = data.dropna().sort_index()
+    data_clean = data.dropna().sort_index()
 
     # Check if the series frequency is set and return it
     try:
-        best_frequency = df_clean.index.freq.freqstr
+        best_frequency = data_clean.index.freq.freqstr
     except AttributeError:
         # If time series frequency attribute is not set, try to infer it
         # or guess the "best" frequency
@@ -48,14 +50,14 @@ def detect_time_step(data):
             # First case: "easiest" case, uniform time series
             # (The try block is because infer_freq raises ValueError if there
             # are fewer than 3 datapoints in the series)
-            best_frequency = pd.infer_freq(df_clean.index)
+            best_frequency = pd.infer_freq(data_clean.index)
         except ValueError:
             pass
         # Second case: "worst" case, non-uniform time series
         # the "best" frequency is the most frequent time delta between
         # two consecutive samples
         if best_frequency is None:
-            frequencies = pd.DataFrame(data={"freq_count": df_clean.index.to_series().diff().value_counts()})
+            frequencies = pd.DataFrame(data={"freq_count": data_clean.index.to_series().diff().value_counts()})
             frequencies.index.name = "timedelta"
             frequencies["freqstr"] = frequencies.apply(lambda x: to_offset(x.name).freqstr, axis=1)
             best_frequency = frequencies.sort_values(by=["freq_count", "timedelta"], ascending=[False, True]).iloc[0, 1]
@@ -120,19 +122,48 @@ def clean_ts_integrate(data, measurement_reading_type):
 
     if measurement_reading_type in ["cumulative", "counter"]:
         # Sort the time series and compute the difference with the previous values
-        df_clean = data.sort_index().diff().fillna(data)
+        data_clean = data.sort_index().diff().fillna(data)
 
         # Keep the same value from data if the difference is negative (counter rollover)
-        df_clean.where(df_clean.gt(0), data, inplace=True)
+        data_clean.where(data_clean.gt(0), data, inplace=True)
 
     elif measurement_reading_type in ["delta", "on_change"]:
         # Compute the cumulative sum for delta metrics
-        df_clean = data.sort_index().cumsum()
+        data_clean = data.sort_index().cumsum()
 
     else:
         raise ValueError("Measurement reading type must be in ['on_change', 'delta', 'cumulative', 'counter'].")
 
-    return df_clean
+    return data_clean
+
+
+def detect_outliers_monthly_zscore(
+        data: pd.DataFrame, target: str, remove: bool = False, threshold: float = 4) -> pd.DataFrame:
+    """
+    The function detects the global outliers in the input dataframe and adds them to the
+    features if remove = false otherwise it removes them directly.
+
+    :param data: input dataframe with a DatetimeIndex.
+    :param target: the target variable of which we want to detect the outliers.
+    :param threshold: threshold that specifies how many std from the mean a datapoint must be to be considered
+        an outlier.
+    :return: the input dataframe with the outlier column or with the outlier directly removed.
+    """
+
+    if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
+        raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
+
+    outliers = data.groupby(by=[data.index.month])[target].transform(
+        lambda x: np.abs(zscore(x, ddof=1, nan_policy='omit')) > threshold)
+
+    data = data.assign(outliers=data[target].where(outliers))
+
+    if not remove:
+        return data
+    else:
+        data = data[data.outliers.isna()]
+        data.drop(columns='outliers', inplace=True)
+        return data
 
 
 if __name__ == '__main__':
