@@ -138,13 +138,18 @@ def clean_ts_integrate(data, measurement_reading_type):
 
 
 def detect_outliers_monthly_zscore(
-        data: pd.DataFrame, target: str, remove: bool = False, threshold: float = 4) -> pd.DataFrame:
+        data: pd.DataFrame, target: str,
+        outlier_column_suffix: str = "_outliers",
+        remove: bool = False,
+        threshold: float = 4) -> pd.DataFrame:
     """
-    The function detects the global outliers in the input dataframe and adds them to the
-    features if remove = false otherwise it removes them directly.
+    The function detects the global outliers in the input dataframe and adds them to it as a 0/1 column
+    if remove = False or removes them directly if remove = True.
 
     :param data: input dataframe with a DatetimeIndex.
+    :param outlier_column_suffix: suffix to be used for the outlier column.
     :param target: the target variable of which we want to detect the outliers.
+    :param remove: if rows identified as outliers should be removed (True) or not (False, default).
     :param threshold: threshold that specifies how many std from the mean a datapoint must be to be considered
         an outlier.
     :return: the input dataframe with the outlier column or with the outlier directly removed.
@@ -153,16 +158,15 @@ def detect_outliers_monthly_zscore(
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    outliers = data.groupby(by=[data.index.month])[target].transform(
-        lambda x: np.abs(zscore(x, ddof=1, nan_policy='omit')) > threshold)
-
-    data = data.assign(outliers=data[target].where(outliers))
+    outlier_column_name = target + outlier_column_suffix
+    data[outlier_column_name] = data.groupby(by=[data.index.month])[target].transform(
+        lambda x: np.abs(zscore(x, ddof=1, nan_policy='omit')) > threshold).astype(int)
 
     if not remove:
         return data
     else:
-        data = data[data.outliers.isna()]
-        data.drop(columns='outliers', inplace=True)
+        data = data[data[outlier_column_name] == 0]
+        data.drop(outlier_column_name, inplace=True)
         return data
 
 
