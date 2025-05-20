@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
+from typing import List
+
 import numpy as np
 import pandas as pd
 from pandas.tseries.frequencies import to_offset
@@ -138,42 +140,55 @@ def clean_ts_integrate(data, measurement_reading_type):
 
 
 def detect_outliers_zscore(
-        data: pd.DataFrame,
-        target: str,
-        outlier_column_name: str = "outliers",
-        grouping_by_hour=False,
-        remove: bool = False,
-        threshold: float = 4) -> pd.DataFrame:
+    data: pd.DataFrame,
+    target: str,
+    outlier_column_name: str = "outliers",
+    grouping: List[str] = None,
+    remove: bool = False,
+    threshold: float = 4
+) -> pd.DataFrame:
     """
-    The function detects the global outliers in the input dataframe and adds them to it as a 0/1 column
-    if remove = False or removes them directly if remove = True.
+    Detects global outliers in the input dataframe based on z-score thresholding within calendar groupings.
+    Outliers are added as a 0/1 column to the input DataFrame if remove=False, or removed directly if remove=True.
 
-    :param data: input dataframe with a DatetimeIndex.
-    :param target: the target variable of which we want to detect the outliers.
-    :param outlier_column_name: name of the outlier column.
-    :param grouping_by_hour: whether to group also by hour of the day other than by month.
-    :param remove: if rows identified as outliers should be removed (True) or not (False, default).
-    :param threshold: threshold that specifies how many std from the mean a datapoint must be to be considered
-        an outlier.
-    :return: the input dataframe with the outlier column or with the outlier directly removed.
+    :param data: Input DataFrame with a DatetimeIndex.
+    :param target: The column in which to detect outliers.
+    :param outlier_column_name: Name of the output column marking outliers.
+    :param grouping: List of calendar components to group by. Default is ["month"].
+    :param remove: If True, remove outliers from the DataFrame. If False, annotate them.
+    :param threshold: Z-score threshold for marking a point as an outlier. Number of std deviations.
+    :return: A modified DataFrame with or without outliers, based on the `remove` flag.
     """
 
-    if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
+    if data.empty or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
     if outlier_column_name in data.columns and not remove:
         raise ValueError("Column '{}' already exists in the DataFrame.".format(outlier_column_name))
 
-    df = data.copy()
-    grouping = [data.index.month] if not grouping_by_hour else [data.index.month, data.index.hour]
+    allowed_components = {"month", "dayofweek", "hour"}
+    grouping = grouping or ["month"]
 
-    data[outlier_column_name] = data.groupby(by=grouping)[target].transform(
-        lambda x: np.abs(zscore(x, ddof=1, nan_policy='omit')) > threshold).astype(int)
+    if not set(grouping).issubset(allowed_components):
+        raise ValueError("Argument 'grouping' must be a subset of: {}".format(allowed_components))
+
+    df = data.copy()
+    temp_columns = []
+
+    for component in grouping:
+        df[component] = getattr(df.index, component)
+        temp_columns.append(component)
+
+    df[outlier_column_name] = df.groupby(by=grouping)[target].transform(
+        lambda x: (np.abs(zscore(x, ddof=1, nan_policy='omit')) > threshold).astype(int)
+    )
+
+    df.drop(columns=temp_columns, inplace=True)
 
     if remove:
         return df[df[outlier_column_name] == 0].drop(columns=[outlier_column_name])
     else:
-        return data
+        return df
 
 
 if __name__ == '__main__':
