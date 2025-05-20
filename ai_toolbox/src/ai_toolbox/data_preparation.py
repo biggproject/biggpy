@@ -166,7 +166,7 @@ def detect_outliers_zscore(
     if outlier_column_name in data.columns and not remove:
         raise ValueError("Column '{}' already exists in the DataFrame.".format(outlier_column_name))
 
-    allowed_components = {"month", "dayofweek", "hour"}
+    allowed_components = {"month", "dayofweek", "weekday", "hour"}
     grouping = grouping or ["month"]
 
     if not set(grouping).issubset(allowed_components):
