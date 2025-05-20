@@ -137,9 +137,11 @@ def clean_ts_integrate(data, measurement_reading_type):
     return data_clean
 
 
-def detect_outliers_monthly_zscore(
-        data: pd.DataFrame, target: str,
+def detect_outliers_zscore(
+        data: pd.DataFrame,
+        target: str,
         outlier_column_name: str = "outliers",
+        grouping_by_hour=False,
         remove: bool = False,
         threshold: float = 4) -> pd.DataFrame:
     """
@@ -147,8 +149,9 @@ def detect_outliers_monthly_zscore(
     if remove = False or removes them directly if remove = True.
 
     :param data: input dataframe with a DatetimeIndex.
-    :param outlier_column_name: name of the outlier column
     :param target: the target variable of which we want to detect the outliers.
+    :param outlier_column_name: name of the outlier column.
+    :param grouping_by_hour: whether to group also by hour of the day other than by month.
     :param remove: if rows identified as outliers should be removed (True) or not (False, default).
     :param threshold: threshold that specifies how many std from the mean a datapoint must be to be considered
         an outlier.
@@ -158,14 +161,18 @@ def detect_outliers_monthly_zscore(
     if data.empty or not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
         raise ValueError("Input must be a non-empty pandas DataFrame with a DateTimeIndex.")
 
-    data[outlier_column_name] = data.groupby(by=[data.index.month])[target].transform(
+    if outlier_column_name in data.columns and not remove:
+        raise ValueError("Column '{}' already exists in the DataFrame.".format(outlier_column_name))
+
+    df = data.copy()
+    grouping = [data.index.month] if not grouping_by_hour else [data.index.month, data.index.hour]
+
+    data[outlier_column_name] = data.groupby(by=grouping)[target].transform(
         lambda x: np.abs(zscore(x, ddof=1, nan_policy='omit')) > threshold).astype(int)
 
-    if not remove:
-        return data
+    if remove:
+        return df[df[outlier_column_name] == 0].drop(columns=[outlier_column_name])
     else:
-        data = data[data[outlier_column_name] == 0]
-        data.drop(outlier_column_name, inplace=True)
         return data
 
 
