@@ -180,7 +180,10 @@ def detect_outliers_zscore(
         temp_columns.append(component)
 
     df[outlier_column_name] = df.groupby(by=grouping)[target].transform(
-        lambda x: (np.abs(zscore(x, ddof=1, nan_policy='omit')) > threshold).astype(int)
+        lambda x: (
+            (np.abs(zscore(x, ddof=1, nan_policy='omit')) > threshold).astype(int)
+            if x.std(ddof=1) > 1e-8 else pd.Series(0, index=x.index)
+        )
     )
 
     df.drop(columns=temp_columns, inplace=True)
