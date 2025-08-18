@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytz
 from dateutil.relativedelta import relativedelta
+from pandas import DataFrame
 from pandas.tseries.frequencies import to_offset
 from scipy import optimize
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -386,6 +387,23 @@ class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
             return X
 
 
+class FourierComponentTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, period=168, harmonics=3):
+        self.period = period
+        self.harmonics = harmonics
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        t = (X.index.hour + X.index.dayofweek * 24).values  # hour of week
+        X_new = {}
+        for k in range(1, self.harmonics + 1):
+            X_new[f'sin_{k}'] = np.sin(2 * np.pi * k * t / self.period)
+            X_new[f'cos_{k}'] = np.cos(2 * np.pi * k * t / self.period)
+        return pd.DataFrame(X_new, index=X.index)
+
+
 class WeeklyProfileTransformer(BaseEstimator, TransformerMixin):
     """
     Transformer version of the function add_weekly_profile, to be used with
@@ -524,7 +542,7 @@ class DegreeDaysTransformer(BaseEstimator, TransformerMixin):
         if not isinstance(X.index, pd.DatetimeIndex) or not isinstance(y.index, pd.DatetimeIndex):
             raise ValueError("Input must be a pandas DataFrame or Series with a DateTimeIndex.")
 
-        self.X_time_step_ = detect_time_step(y)[0]
+        self.X_time_step_ = detect_time_step(X)[0]
         self.y_time_step_ = detect_time_step(y)[0]
 
         if self.X_time_step_ != self.y_time_step_:
@@ -692,7 +710,7 @@ def add_degree_days_component(
         base_temperature: typing.Union[float, dict] = None,
         temperature_column: str = "OutdoorTemperature",
         energy_consumption_column: str = "EnergyConsumptionGridElectricity",
-        mode: str = None) -> pd.DataFrame:
+        mode: str = None) -> DataFrame | None:
     """
     This function adds the 'degree days' feature to the input DataFrame, which
     improves the performances of linear models when predicting energy consumption.
