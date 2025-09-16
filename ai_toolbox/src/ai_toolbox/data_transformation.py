@@ -22,6 +22,42 @@ from sklearn.utils.validation import check_is_fitted, check_X_y
 from ai_toolbox.data_preparation import detect_time_step
 
 
+def extract_daily_load_curves(data, aggregation: str = 'median', normalize: bool = True):
+    """
+    It extracts the daily load curve as a 24-hour vector, representing the
+    electricity consumption profile of a typical day of a building.
+
+    :param data: Input time series for which we want to extract the daily load curve.
+    :param aggregation: Aggregation function to use to aggregate the data.
+    :param normalize: whether to normalize, dividing by the maximum or not.
+    :return: the daily load curve as a 24-hour vector.
+    """
+
+    # Check input data before extracting the load curves
+
+    if data.empty or (isinstance(data, pd.DataFrame) and data.shape[1] > 1):
+        raise ValueError("Input series must be not empty and have exactly one column (if DataFrame),"
+                         " i.e. shape = (n, 1).")
+
+    if detect_time_step(data)[0] is None:
+        raise ValueError("Impossible to determine the frequency of the input time series.")
+
+    try:
+        frq_cmp = to_offset(detect_time_step(data)[0]) > to_offset('1h')
+        if frq_cmp:
+            raise ValueError("The frequency of the input time series must be not lower than '1h'.")
+    except TypeError:
+        raise ValueError("The frequency of the input time series must be not lower than '1h'.")
+
+    # Group data first by month and then by day and aggregate by median
+    df_group = data.groupby(by=[data.index.hour]).agg(aggregation)
+
+    if normalize:
+        df_group = df_group / df_group.max()
+
+    return df_group
+
+
 def yearly_profile_detection(data, exclude_days=None, aggregation: str = 'median'):
     """
     The function returns the yearly profile of the input time series.
@@ -208,381 +244,6 @@ def weekly_profile_detection(
     df_group.drop(["dayofweek", "hour", "year", "month", "day"], axis=1, inplace=True)
 
     return df_group
-
-
-class HolidayTransformer(BaseEstimator, TransformerMixin):
-    """
-    Transformer version of the function add_holiday_component
-    to be used with sklearn Pipelines.
-    """
-
-    def __init__(self, country: str, prov: str = None, state: str = None, switch_on: bool = True):
-        """
-        Adds the holiday feature to the input DataFrame based on the country.
-        The computation of the holidays is based on the package
-        available in pypi: https://pypi.org/project/holidays/ .
-        Check the documentation for more information about country and region codes.
-
-        :param country: string identifying the country based on ISO 3166-1 alpha-2 code.
-        :param prov: The Province (see documentation of what is supported; not
-           implemented for all countries).
-        :param state: The State (see documentation for what is supported; not
-           implemented for all countries).
-        :param switch_on: Can be used to enable or disable the transformation.
-            Useful in the hyperparameter optimization. If False, the input data
-            will be passed through.
-        :return: new DataFrame with the added holiday component.
-        """
-
-        self.country = country
-        self.switch_on = switch_on
-        self.prov = prov
-        self.state = state
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X) -> pd.DataFrame:
-        """
-
-        :param X:  input DataFrame with a DateTimeIndex.
-
-        :return:
-        """
-
-        # Retrieve the country holidays in the time range of the input data
-
-        if self.switch_on is True:
-            country_holidays = holidays.country_holidays(
-                country=self.country,
-                prov=self.prov,
-                state=self.state)[X.index.min():X.index.max() + timedelta(days=1)]
-            col_holidays = np.isin(X.index.date, country_holidays).astype(int)
-            return X.assign(holiday=col_holidays)
-        else:
-            return X
-
-
-class ScalerTransformer(BaseEstimator, TransformerMixin):
-    """
-    Wrapper around some preprocessing functions in sklearn.
-    Generally, sklearn transformers return numpy matrices,
-    which means that only the values of the DataFrame are
-    kept while the header and the index are stripped off.
-    The index in time series is an important feature we
-    do not want to lose in the transformation process.
-    """
-
-    def __init__(self, scaler: TransformerMixin, switch_on: bool = True):
-        """
-        Adds calendar components quarter, month, week, day, hour
-        to the input DataFrame.
-
-        :param scaler: a sklearn scaler, such as StandardScaler or MinMaxScaler.
-        :param switch_on: Can be used to enable or disable the transformation.
-            Useful in the hyperparameter optimization. If False, the input data
-            will be passed through.
-        :return: new DataFrame with the added calendar components.
-        """
-        self.scaler = scaler
-        self.switch_on = switch_on
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X) -> pd.DataFrame:
-        """
-        Applies the transformation done by the input scaler
-        to the X date while keeping the DataFrame format.
-        It assumes that the input scaler will not change
-        the column order of X.
-
-        :param X:  input DataFrame with a DateTimeIndex.
-        :return: new Dataframe with the scaled features.
-        """
-
-        if self.switch_on is True:
-            return pd.DataFrame(
-                data=self.scaler.fit_transform(X),
-                index=X.index,
-                columns=X.columns)
-        else:
-            return X
-
-
-class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
-    """
-    Transformer version of the functions add_calendar_components
-    and trigonometric_encode_calendar_components, to be used with
-    sklearn Pipelines.
-    """
-
-    def __init__(self, components: list = None, encode: bool = False, switch_on: bool = True):
-        """
-        Adds calendar components quarter, month, week, day, hour
-        to the input DataFrame.
-
-        :param components: List of strings, specifying the calendar components you want to add in
-            ["season", "quarter", "month", "week", "weekday", "hour", "day", "dayofyear"].
-        :param encode: If True, encodes the calendar features into cyclic sin/cosine components.
-            For each calendar components, the transformer will generate one sin and one cosine
-            component.
-        :param switch_on: Can be used to enable or disable the transformation.
-            Useful in the hyperparameter optimization. If False, the input data
-            will be passed through.
-        """
-
-        self.component_period = {
-            "season": 4,
-            "quarter": 4,
-            "month": 12,
-            "week": 53,
-            "weekday": 7,
-            "hour": 24,
-            "day": 31,
-            "dayofyear": 365
-        }
-        default_components = list(self.component_period.keys())
-        if components is None:
-            self.components = default_components
-        elif set(components).issubset(default_components):
-            self.components = components
-        else:
-            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(
-                list(default_components)))
-
-        self.encode = encode
-        self.switch_on = switch_on
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X) -> pd.DataFrame:
-        """
-        :param X:  input DataFrame with a DateTimeIndex.
-        :return: new DataFrame with the added calendar components.
-        """
-
-        if self.switch_on is True:
-            if self.encode is True:
-                # Here we generate a sin and a cosine component for each calendar feature
-
-                encoded_components = {
-                    k: v for component in self.components for k, v in
-                    (
-                        ('{}_sin'.format(component), np.sin(get_calendar_component(X, component) /
-                                                            self.component_period[component] * 2 * np.pi)),
-                        ('{}_cos'.format(component), np.cos(get_calendar_component(X, component) /
-                                                            self.component_period[component] * 2 * np.pi))
-                    )
-                }
-                return X.assign(**encoded_components)
-
-            else:
-                return X.assign(**{
-                    '{}'.format(component): get_calendar_component(X, component)
-                    for component in self.components
-                })
-        else:
-            return X
-
-
-class FourierComponentTransformer(BaseEstimator, TransformerMixin):
-    def __init__(self, period=168, harmonics=3):
-        self.period = period
-        self.harmonics = harmonics
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X):
-        t = (X.index.hour + X.index.dayofweek * 24).values  # hour of week
-        X_new = {}
-        for k in range(1, self.harmonics + 1):
-            X_new[f'sin_{k}'] = np.sin(2 * np.pi * k * t / self.period)
-            X_new[f'cos_{k}'] = np.cos(2 * np.pi * k * t / self.period)
-        return pd.DataFrame(X_new, index=X.index)
-
-
-class WeeklyProfileTransformer(BaseEstimator, TransformerMixin):
-    """
-    Transformer version of the function add_weekly_profile, to be used with
-    sklearn Pipelines.
-    """
-
-    def __init__(self, aggregation: str = "median", switch_on: bool = True):
-        """
-
-        :param aggregation: aggregation function to use for the profile
-        :param switch_on: Can be used to enable or disable the transformation.
-            Useful in the hyperparameter optimization. If False, the input data
-            will be passed through.
-        """
-
-        self.aggregation = aggregation
-        self.feature_name = ""
-        self.switch_on = switch_on
-        self.profile_ = None
-
-    def fit(self, X, y=None):
-
-        check_X_y(X, y, ensure_2d=False)
-
-        # Check input data before computing profile
-
-        if isinstance(y, pd.Series):
-            y = y.to_frame()
-
-        if not isinstance(X.index, pd.DatetimeIndex) or not isinstance(y.index, pd.DatetimeIndex):
-            raise ValueError("Input must be a pandas DataFrame or Series with a DateTimeIndex.")
-
-        elif y.index.isocalendar().week.nunique() < 2:
-            raise ValueError("Input time series must cover at least two weeks to get a weekly profile.")
-
-        # Create weekly profile and align it with the input dataframe
-        self.profile_ = y.groupby([y.index.dayofweek, y.index.hour]).agg(self.aggregation)
-        self.feature_name = "{}_weekly_profile".format(self.profile_.columns[0])
-        self.profile_.rename(columns={self.profile_.columns[0]: self.feature_name}, inplace=True)
-        self.profile_ = self.profile_.assign(profile_key1=self.profile_.index.get_level_values(0),
-                                             profile_key2=self.profile_.index.get_level_values(1))
-        return self
-
-    def transform(self, X) -> pd.DataFrame:
-        """
-        :param X:  input DataFrame with a DateTimeIndex.
-        :return: new DataFrame with the added weekly profile.
-        """
-
-        check_is_fitted(self)
-        if self.switch_on is True:
-            if isinstance(X, pd.Series):
-                X = X.to_frame()
-            X_temp = X.assign(profile_key1=X.index.dayofweek, profile_key2=X.index.hour)
-            merged_df = X_temp.reset_index().merge(self.profile_, on=["profile_key1", "profile_key2"], how="left")
-            X_temp[self.feature_name] = merged_df[self.feature_name].values
-            X_temp.drop(columns=["profile_key1", "profile_key2"], inplace=True)
-            return X_temp
-
-        else:
-            return X
-
-
-class DegreeDaysTransformer(BaseEstimator, TransformerMixin):
-    """
-    Transformer version of the function add_degree_days_component, to be used with
-    sklearn Pipelines.
-    """
-
-    def __init__(
-            self,
-            base_temperature: typing.Union[float, dict] = 15,
-            temperature_column: str = "OutdoorTemperature",
-            mode: str = None,
-            switch_on: bool = True):
-        """
-        This function adds the 'degree days' feature to the input DataFrame, which improves the performances of
-        linear models when predicting energy consumption. Degree days are used to linearize the relationship between
-        energy demand and outdoor temperature. The input data must have hourly or daily frequency.
-
-        :param base_temperature: Balance Point Temperature (BPT) used in the calculation. Heating (heating mode)
-         is required by the building when the outdoor temperature goes below BPT. Cooling (cooling mode) is required
-         by the building when the outdoor temperature is greater than the BPT.
-         If a float value is provided, this will be used as balance point temperature both for HeatingDegreeDays and
-          CoolingDegreeDays.
-         If a dict is provided, this must be for example: {'HeatingDegreeDays': 15, 'CoolingDegreeDays': 17}.
-        :param temperature_column: name of the column with the temperature data
-        :param mode: is 'heating' for winter, 'cooling' for summer, None to add both features.
-        :param switch_on: Can be used to enable or disable the transformation.
-            Useful in the hyperparameter optimization. If False, the input data
-            will be passed through.
-        """
-
-        self.base_temperature = base_temperature
-        self.temperature_column = temperature_column
-        self.mode = mode
-        self.switch_on = switch_on
-
-        if isinstance(base_temperature, dict):
-            # Catch and reraise with more specific message
-            try:
-                self.hdd_bpt_ = base_temperature["HeatingDegreeDays"]
-                self.cdd_bpt_ = base_temperature["CoolingDegreeDays"]
-            except KeyError as e:
-                raise KeyError("Provided base temperature dictionary must contain both 'HeatingDegreeDays' and "
-                      "'CoolingDegreeDays' keys.") from e
-        elif isinstance(base_temperature, (float, int)):
-            self.hdd_bpt_, self.cdd_bpt_ = base_temperature, base_temperature
-        else:
-            raise TypeError("Base temperature for degree days must be dict, int or float.")
-
-        self.X_time_step_ = ''
-        self.y_time_step_ = ''
-        self._time_step_adj = {
-            'H': 24,
-            'D': 1
-        }
-
-    def fit(self, X, y=None):
-        """
-        Fit the transformer to the input data.
-
-        :param X: Must contain a column with an outdoor temperature time series.
-        :param y: Must be an energy consumption time series.
-        :return:
-        """
-
-        check_X_y(X, y, ensure_2d=False)
-
-        # Check input data before computing degree days
-
-        if self.temperature_column not in X.columns:
-            raise ValueError("{} not found in X columns.".format(
-                self.temperature_column))
-
-        if not isinstance(X.index, pd.DatetimeIndex) or not isinstance(y.index, pd.DatetimeIndex):
-            raise ValueError("Input must be a pandas DataFrame or Series with a DateTimeIndex.")
-
-        self.X_time_step_ = detect_time_step(X)[0]
-        self.y_time_step_ = detect_time_step(y)[0]
-
-        if self.X_time_step_ != self.y_time_step_:
-            raise ValueError("X and y must have the same time step: X time step is '{}', y time step is '{}'.")
-
-        if self.y_time_step_ not in ['h', 'd', 'H', 'D', '1h', '1d']:
-            raise ValueError("Input data must have hourly ('h') or daily ('d') granularity.")
-
-        if isinstance(self.base_temperature, dict):
-            self.hdd_bpt_ = self.base_temperature['HeatingDegreeDays']
-            self.cdd_bpt_ = self.base_temperature['CoolingDegreeDays']
-
-        return self
-
-    def transform(self, X) -> pd.DataFrame:
-
-        check_is_fitted(self)
-        if self.switch_on is True:
-            if isinstance(X, pd.Series):
-                X = X.to_frame()
-
-            if self.mode == 'heating':
-                HeatingDegreeDays = np.maximum(0, (self.hdd_bpt_ -
-                                                   X[self.temperature_column]) / self._time_step_adj[self.X_time_step_])
-                X_temp = X.assign(HeatingDegreeDays=HeatingDegreeDays)
-            elif self.mode == 'cooling':
-                CoolingDegreeDays = np.maximum(0, (X[self.temperature_column]
-                                                   - self.cdd_bpt_) / self._time_step_adj[self.X_time_step_])
-                X_temp = X.assign(CoolingDegreeDays=CoolingDegreeDays)
-            else:
-                CoolingDegreeDays = np.maximum(0, (X[self.temperature_column] - self.cdd_bpt_)
-                                               / self._time_step_adj[self.X_time_step_])
-                HeatingDegreeDays = np.maximum(0, (self.hdd_bpt_ - X[self.temperature_column]) /
-                                               self._time_step_adj[self.X_time_step_])
-                X_temp = X.assign(HeatingDegreeDays=HeatingDegreeDays, CoolingDegreeDays=CoolingDegreeDays)
-
-            return X_temp
-
-        else:
-            return X
 
 
 def add_lag_components(data: pd.DataFrame, columns: list = None, max_lag: int = 1) -> pd.DataFrame:
@@ -1034,6 +695,380 @@ def generate_extended_weekly_profile(
     merged_df = df_profile.reset_index().merge(df_weekly, on=["profile_key1", "profile_key2"]).set_index("timestamp")
     merged_df.drop(columns=["profile_key1", "profile_key2"], inplace=True)
     return merged_df.sort_index()
+
+class HolidayTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transformer version of the function add_holiday_component
+    to be used with sklearn Pipelines.
+    """
+
+    def __init__(self, country: str, prov: str = None, state: str = None, switch_on: bool = True):
+        """
+        Adds the holiday feature to the input DataFrame based on the country.
+        The computation of the holidays is based on the package
+        available in pypi: https://pypi.org/project/holidays/ .
+        Check the documentation for more information about country and region codes.
+
+        :param country: string identifying the country based on ISO 3166-1 alpha-2 code.
+        :param prov: The Province (see documentation of what is supported; not
+           implemented for all countries).
+        :param state: The State (see documentation for what is supported; not
+           implemented for all countries).
+        :param switch_on: Can be used to enable or disable the transformation.
+            Useful in the hyperparameter optimization. If False, the input data
+            will be passed through.
+        :return: new DataFrame with the added holiday component.
+        """
+
+        self.country = country
+        self.switch_on = switch_on
+        self.prov = prov
+        self.state = state
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X) -> pd.DataFrame:
+        """
+
+        :param X:  input DataFrame with a DateTimeIndex.
+
+        :return:
+        """
+
+        # Retrieve the country holidays in the time range of the input data
+
+        if self.switch_on is True:
+            country_holidays = holidays.country_holidays(
+                country=self.country,
+                prov=self.prov,
+                state=self.state)[X.index.min():X.index.max() + timedelta(days=1)]
+            col_holidays = np.isin(X.index.date, country_holidays).astype(int)
+            return X.assign(holiday=col_holidays)
+        else:
+            return X
+
+
+class ScalerTransformer(BaseEstimator, TransformerMixin):
+    """
+    Wrapper around some preprocessing functions in sklearn.
+    Generally, sklearn transformers return numpy matrices,
+    which means that only the values of the DataFrame are
+    kept while the header and the index are stripped off.
+    The index in time series is an important feature we
+    do not want to lose in the transformation process.
+    """
+
+    def __init__(self, scaler: TransformerMixin, switch_on: bool = True):
+        """
+        Adds calendar components quarter, month, week, day, hour
+        to the input DataFrame.
+
+        :param scaler: a sklearn scaler, such as StandardScaler or MinMaxScaler.
+        :param switch_on: Can be used to enable or disable the transformation.
+            Useful in the hyperparameter optimization. If False, the input data
+            will be passed through.
+        :return: new DataFrame with the added calendar components.
+        """
+        self.scaler = scaler
+        self.switch_on = switch_on
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X) -> pd.DataFrame:
+        """
+        Applies the transformation done by the input scaler
+        to the X date while keeping the DataFrame format.
+        It assumes that the input scaler will not change
+        the column order of X.
+
+        :param X:  input DataFrame with a DateTimeIndex.
+        :return: new Dataframe with the scaled features.
+        """
+
+        if self.switch_on is True:
+            return pd.DataFrame(
+                data=self.scaler.fit_transform(X),
+                index=X.index,
+                columns=X.columns)
+        else:
+            return X
+
+
+class CalendarComponentTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transformer version of the functions add_calendar_components
+    and trigonometric_encode_calendar_components, to be used with
+    sklearn Pipelines.
+    """
+
+    def __init__(self, components: list = None, encode: bool = False, switch_on: bool = True):
+        """
+        Adds calendar components quarter, month, week, day, hour
+        to the input DataFrame.
+
+        :param components: List of strings, specifying the calendar components you want to add in
+            ["season", "quarter", "month", "week", "weekday", "hour", "day", "dayofyear"].
+        :param encode: If True, encodes the calendar features into cyclic sin/cosine components.
+            For each calendar components, the transformer will generate one sin and one cosine
+            component.
+        :param switch_on: Can be used to enable or disable the transformation.
+            Useful in the hyperparameter optimization. If False, the input data
+            will be passed through.
+        """
+
+        self.component_period = {
+            "season": 4,
+            "quarter": 4,
+            "month": 12,
+            "week": 53,
+            "weekday": 7,
+            "hour": 24,
+            "day": 31,
+            "dayofyear": 365
+        }
+        default_components = list(self.component_period.keys())
+        if components is None:
+            self.components = default_components
+        elif set(components).issubset(default_components):
+            self.components = components
+        else:
+            raise ValueError("Argument 'calendar_components' must be a subset of: {}".format(
+                list(default_components)))
+
+        self.encode = encode
+        self.switch_on = switch_on
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X) -> pd.DataFrame:
+        """
+        :param X:  input DataFrame with a DateTimeIndex.
+        :return: new DataFrame with the added calendar components.
+        """
+
+        if self.switch_on is True:
+            if self.encode is True:
+                # Here we generate a sin and a cosine component for each calendar feature
+
+                encoded_components = {
+                    k: v for component in self.components for k, v in
+                    (
+                        ('{}_sin'.format(component), np.sin(get_calendar_component(X, component) /
+                                                            self.component_period[component] * 2 * np.pi)),
+                        ('{}_cos'.format(component), np.cos(get_calendar_component(X, component) /
+                                                            self.component_period[component] * 2 * np.pi))
+                    )
+                }
+                return X.assign(**encoded_components)
+
+            else:
+                return X.assign(**{
+                    '{}'.format(component): get_calendar_component(X, component)
+                    for component in self.components
+                })
+        else:
+            return X
+
+
+class FourierComponentTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, period=168, harmonics=3):
+        self.period = period
+        self.harmonics = harmonics
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        t = (X.index.hour + X.index.dayofweek * 24).values  # hour of week
+        X_new = {}
+        for k in range(1, self.harmonics + 1):
+            X_new[f'sin_{k}'] = np.sin(2 * np.pi * k * t / self.period)
+            X_new[f'cos_{k}'] = np.cos(2 * np.pi * k * t / self.period)
+        return pd.DataFrame(X_new, index=X.index)
+
+
+class WeeklyProfileTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transformer version of the function add_weekly_profile, to be used with
+    sklearn Pipelines.
+    """
+
+    def __init__(self, aggregation: str = "median", switch_on: bool = True):
+        """
+
+        :param aggregation: aggregation function to use for the profile
+        :param switch_on: Can be used to enable or disable the transformation.
+            Useful in the hyperparameter optimization. If False, the input data
+            will be passed through.
+        """
+
+        self.aggregation = aggregation
+        self.feature_name = ""
+        self.switch_on = switch_on
+        self.profile_ = None
+
+    def fit(self, X, y=None):
+
+        check_X_y(X, y, ensure_2d=False)
+
+        # Check input data before computing profile
+
+        if isinstance(y, pd.Series):
+            y = y.to_frame()
+
+        if not isinstance(X.index, pd.DatetimeIndex) or not isinstance(y.index, pd.DatetimeIndex):
+            raise ValueError("Input must be a pandas DataFrame or Series with a DateTimeIndex.")
+
+        elif y.index.isocalendar().week.nunique() < 2:
+            raise ValueError("Input time series must cover at least two weeks to get a weekly profile.")
+
+        # Create weekly profile and align it with the input dataframe
+        self.profile_ = y.groupby([y.index.dayofweek, y.index.hour]).agg(self.aggregation)
+        self.feature_name = "{}_weekly_profile".format(self.profile_.columns[0])
+        self.profile_.rename(columns={self.profile_.columns[0]: self.feature_name}, inplace=True)
+        self.profile_ = self.profile_.assign(profile_key1=self.profile_.index.get_level_values(0),
+                                             profile_key2=self.profile_.index.get_level_values(1))
+        return self
+
+    def transform(self, X) -> pd.DataFrame:
+        """
+        :param X:  input DataFrame with a DateTimeIndex.
+        :return: new DataFrame with the added weekly profile.
+        """
+
+        check_is_fitted(self)
+        if self.switch_on is True:
+            if isinstance(X, pd.Series):
+                X = X.to_frame()
+            X_temp = X.assign(profile_key1=X.index.dayofweek, profile_key2=X.index.hour)
+            merged_df = X_temp.reset_index().merge(self.profile_, on=["profile_key1", "profile_key2"], how="left")
+            X_temp[self.feature_name] = merged_df[self.feature_name].values
+            X_temp.drop(columns=["profile_key1", "profile_key2"], inplace=True)
+            return X_temp
+
+        else:
+            return X
+
+
+class DegreeDaysTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transformer version of the function add_degree_days_component, to be used with
+    sklearn Pipelines.
+    """
+
+    def __init__(
+            self,
+            base_temperature: typing.Union[float, dict] = 15,
+            temperature_column: str = "OutdoorTemperature",
+            mode: str = None,
+            switch_on: bool = True):
+        """
+        This function adds the 'degree days' feature to the input DataFrame, which improves the performances of
+        linear models when predicting energy consumption. Degree days are used to linearize the relationship between
+        energy demand and outdoor temperature. The input data must have hourly or daily frequency.
+
+        :param base_temperature: Balance Point Temperature (BPT) used in the calculation. Heating (heating mode)
+         is required by the building when the outdoor temperature goes below BPT. Cooling (cooling mode) is required
+         by the building when the outdoor temperature is greater than the BPT.
+         If a float value is provided, this will be used as balance point temperature both for HeatingDegreeDays and
+          CoolingDegreeDays.
+         If a dict is provided, this must be for example: {'HeatingDegreeDays': 15, 'CoolingDegreeDays': 17}.
+        :param temperature_column: name of the column with the temperature data
+        :param mode: is 'heating' for winter, 'cooling' for summer, None to add both features.
+        :param switch_on: Can be used to enable or disable the transformation.
+            Useful in the hyperparameter optimization. If False, the input data
+            will be passed through.
+        """
+
+        self.base_temperature = base_temperature
+        self.temperature_column = temperature_column
+        self.mode = mode
+        self.switch_on = switch_on
+
+        if isinstance(base_temperature, dict):
+            # Catch and reraise with more specific message
+            try:
+                self.hdd_bpt_ = base_temperature["HeatingDegreeDays"]
+                self.cdd_bpt_ = base_temperature["CoolingDegreeDays"]
+            except KeyError as e:
+                raise KeyError("Provided base temperature dictionary must contain both 'HeatingDegreeDays' and "
+                      "'CoolingDegreeDays' keys.") from e
+        elif isinstance(base_temperature, (float, int)):
+            self.hdd_bpt_, self.cdd_bpt_ = base_temperature, base_temperature
+        else:
+            raise TypeError("Base temperature for degree days must be dict, int or float.")
+
+        self.X_time_step_ = ''
+        self.y_time_step_ = ''
+        self._time_step_adj = {
+            'H': 24,
+            'D': 1
+        }
+
+    def fit(self, X, y=None):
+        """
+        Fit the transformer to the input data.
+
+        :param X: Must contain a column with an outdoor temperature time series.
+        :param y: Must be an energy consumption time series.
+        :return:
+        """
+
+        check_X_y(X, y, ensure_2d=False)
+
+        # Check input data before computing degree days
+
+        if self.temperature_column not in X.columns:
+            raise ValueError("{} not found in X columns.".format(
+                self.temperature_column))
+
+        if not isinstance(X.index, pd.DatetimeIndex) or not isinstance(y.index, pd.DatetimeIndex):
+            raise ValueError("Input must be a pandas DataFrame or Series with a DateTimeIndex.")
+
+        self.X_time_step_ = detect_time_step(X)[0]
+        self.y_time_step_ = detect_time_step(y)[0]
+
+        if self.X_time_step_ != self.y_time_step_:
+            raise ValueError("X and y must have the same time step: X time step is '{}', y time step is '{}'.")
+
+        if self.y_time_step_ not in ['h', 'd', 'H', 'D', '1h', '1d']:
+            raise ValueError("Input data must have hourly ('h') or daily ('d') granularity.")
+
+        if isinstance(self.base_temperature, dict):
+            self.hdd_bpt_ = self.base_temperature['HeatingDegreeDays']
+            self.cdd_bpt_ = self.base_temperature['CoolingDegreeDays']
+
+        return self
+
+    def transform(self, X) -> pd.DataFrame:
+
+        check_is_fitted(self)
+        if self.switch_on is True:
+            if isinstance(X, pd.Series):
+                X = X.to_frame()
+
+            if self.mode == 'heating':
+                HeatingDegreeDays = np.maximum(0, (self.hdd_bpt_ -
+                                                   X[self.temperature_column]) / self._time_step_adj[self.X_time_step_])
+                X_temp = X.assign(HeatingDegreeDays=HeatingDegreeDays)
+            elif self.mode == 'cooling':
+                CoolingDegreeDays = np.maximum(0, (X[self.temperature_column]
+                                                   - self.cdd_bpt_) / self._time_step_adj[self.X_time_step_])
+                X_temp = X.assign(CoolingDegreeDays=CoolingDegreeDays)
+            else:
+                CoolingDegreeDays = np.maximum(0, (X[self.temperature_column] - self.cdd_bpt_)
+                                               / self._time_step_adj[self.X_time_step_])
+                HeatingDegreeDays = np.maximum(0, (self.hdd_bpt_ - X[self.temperature_column]) /
+                                               self._time_step_adj[self.X_time_step_])
+                X_temp = X.assign(HeatingDegreeDays=HeatingDegreeDays, CoolingDegreeDays=CoolingDegreeDays)
+
+            return X_temp
+
+        else:
+            return X
 
 
 if __name__ == '__main__':
